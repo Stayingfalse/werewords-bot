@@ -76,10 +76,10 @@ module.exports = {
 
     // ── Modal submissions ────────────────────────────────────────────────────
     if (interaction.isModalSubmit()) {
-      const { customId: modalId, guildId, user } = interaction;
+      const { customId: modalId, channelId, guildId, user } = interaction;
 
       if (modalId === 'ww_word_modal') {
-        const game = gameManager.getGame(guildId);
+        const game = gameManager.getGame(channelId);
 
         if (!game || game.phase !== 'playing') {
           return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
@@ -125,12 +125,12 @@ module.exports = {
     // ── Button interactions ──────────────────────────────────────────────────
     if (!interaction.isButton()) return;
 
-    const { customId, guildId, user } = interaction;
+    const { customId, channelId, guildId, user } = interaction;
 
     // Ignore buttons that don't belong to this bot.
     if (!customId.startsWith('ww_')) return;
 
-    const game = gameManager.getGame(guildId);
+    const game = gameManager.getGame(channelId);
 
     // ── ww_join ──────────────────────────────────────────────────────────────
     if (customId === 'ww_join') {
@@ -138,7 +138,7 @@ module.exports = {
         return interaction.reply({ content: 'There is no active lobby to join.', flags: MessageFlags.Ephemeral });
       }
 
-      const added = gameManager.addPlayer(guildId, user);
+      const added = gameManager.addPlayer(channelId, user);
       if (!added) {
         const reason = game.players.size >= 10
           ? 'The lobby is full (10 players max).'
@@ -158,7 +158,7 @@ module.exports = {
         return interaction.reply({ content: 'There is no active lobby.', flags: MessageFlags.Ephemeral });
       }
 
-      const removed = gameManager.removePlayer(guildId, user.id);
+      const removed = gameManager.removePlayer(channelId, user.id);
       if (!removed) {
         return interaction.reply({ content: 'You are not in the game.', flags: MessageFlags.Ephemeral });
       }
@@ -189,7 +189,7 @@ module.exports = {
       await interaction.deferUpdate();
 
       // Assign roles and prepare 3 random word options for the Mayor to choose from.
-      gameManager.assignRoles(guildId);
+      gameManager.assignRoles(channelId);
       game.wordOptions = sampleN(wordPool, 3);
       // game.word stays null until the Mayor picks.
 

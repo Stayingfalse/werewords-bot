@@ -5,13 +5,13 @@ const { assignRoles } = require('../utils/roles');
 class GameState {
   /**
    * @param {string} guildId
-   * @param {string} channelId
+   * @param {string} threadId  The Discord thread channel ID that hosts this game.
    * @param {string} hostId
    * @param {string} hostUsername
    */
-  constructor(guildId, channelId, hostId, hostUsername) {
+  constructor(guildId, threadId, hostId, hostUsername) {
     this.guildId = guildId;
-    this.channelId = channelId;
+    this.threadId = threadId;
     this.hostId = hostId;
     this.hostUsername = hostUsername;
     this.messageId = null;
@@ -46,47 +46,63 @@ class GameState {
 
 class GameManager {
   constructor() {
-    /** @type {Map<string, GameState>} */
+    /** @type {Map<string, GameState>} */  // threadId → GameState
     this.games = new Map();
   }
 
   /**
-   * Creates and registers a new game for the given guild.
+   * Creates and registers a new game, keyed by thread ID.
+   * @param {string} guildId
+   * @param {string} threadId
+   * @param {string} hostId
+   * @param {string} hostUsername
    * @returns {GameState}
    */
-  createGame(guildId, channelId, hostId, hostUsername) {
-    const game = new GameState(guildId, channelId, hostId, hostUsername);
-    this.games.set(guildId, game);
+  createGame(guildId, threadId, hostId, hostUsername) {
+    const game = new GameState(guildId, threadId, hostId, hostUsername);
+    this.games.set(threadId, game);
     return game;
   }
 
   /** @returns {GameState|null} */
-  getGame(guildId) {
-    return this.games.get(guildId) ?? null;
+  getGame(threadId) {
+    return this.games.get(threadId) ?? null;
+  }
+
+  /**
+   * Finds any active game in the given guild that is hosted by hostId.
+   * @returns {GameState|null}
+   */
+  getGameByHost(guildId, hostId) {
+    for (const game of this.games.values()) {
+      if (game.guildId === guildId && game.hostId === hostId) return game;
+    }
+    return null;
   }
 
   /**
    * Cleans up timers/collectors and removes the game from the registry.
    * @returns {boolean} whether a game was removed
    */
-  deleteGame(guildId) {
-    const game = this.games.get(guildId);
+  deleteGame(threadId) {
+    const game = this.games.get(threadId);
     if (!game) return false;
 
     if (game.timerInterval) clearInterval(game.timerInterval);
     if (game.collector && !game.collector.ended) game.collector.stop('cleanup');
 
-    this.games.delete(guildId);
+    this.games.delete(threadId);
     return true;
   }
 
   /**
    * Adds a Discord user to the lobby.
+   * @param {string} threadId
    * @param {{id: string, username: string}} user
    * @returns {boolean} false if the user was already in the game or the lobby is full
    */
-  addPlayer(guildId, user) {
-    const game = this.games.get(guildId);
+  addPlayer(threadId, user) {
+    const game = this.games.get(threadId);
     if (!game || game.players.has(user.id) || game.players.size >= 10) return false;
 
     game.players.set(user.id, { id: user.id, username: user.username, role: null });
@@ -95,20 +111,22 @@ class GameManager {
 
   /**
    * Removes a player from the lobby by user ID.
+   * @param {string} threadId
    * @returns {boolean}
    */
-  removePlayer(guildId, userId) {
-    const game = this.games.get(guildId);
+  removePlayer(threadId, userId) {
+    const game = this.games.get(threadId);
     if (!game) return false;
     return game.players.delete(userId);
   }
 
   /**
    * Shuffles the player list and assigns roles in place.
+   * @param {string} threadId
    * @returns {GameState|null}
    */
-  assignRoles(guildId) {
-    const game = this.games.get(guildId);
+  assignRoles(threadId) {
+    const game = this.games.get(threadId);
     if (!game) return null;
 
     const assigned = assignRoles([...game.players.values()]);
