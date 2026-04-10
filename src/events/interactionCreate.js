@@ -1,4 +1,4 @@
-const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, MessageFlags } = require('discord.js');
 const {
   buildLobbyEmbed,
   buildLobbyComponents,
@@ -64,7 +64,7 @@ module.exports = {
         await command.execute(interaction, client);
       } catch (error) {
         console.error('[Command error]', error);
-        const payload = { content: '❌ An error occurred running that command.', ephemeral: true };
+        const payload = { content: '❌ An error occurred running that command.', flags: MessageFlags.Ephemeral };
         if (interaction.replied || interaction.deferred) {
           await interaction.followUp(payload);
         } else {
@@ -82,32 +82,32 @@ module.exports = {
         const game = gameManager.getGame(guildId);
 
         if (!game || game.phase !== 'playing') {
-          return interaction.reply({ content: 'There is no active game.', ephemeral: true });
+          return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
         }
 
         const player = game.players.get(user.id);
         if (!player || player.role !== ROLES.MAYOR) {
-          return interaction.reply({ content: 'Only the Mayor can pick the magic word.', ephemeral: true });
+          return interaction.reply({ content: 'Only the Mayor can pick the magic word.', flags: MessageFlags.Ephemeral });
         }
 
         if (game.word) {
           return interaction.reply({
             content: `✅ The magic word is already set to: **${game.word}**`,
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
 
         const raw = interaction.fields.getTextInputValue('ww_word_input');
         const chosen = raw.trim();
         if (!chosen) {
-          return interaction.reply({ content: 'The magic word cannot be blank.', ephemeral: true });
+          return interaction.reply({ content: 'The magic word cannot be blank.', flags: MessageFlags.Ephemeral });
         }
 
         game.word = chosen;
 
         await interaction.reply({
           content: `✅ You chose the magic word: **${game.word}**`,
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
 
         // Resolve all pending Werewolf/Seer interactions.
@@ -135,7 +135,7 @@ module.exports = {
     // ── ww_join ──────────────────────────────────────────────────────────────
     if (customId === 'ww_join') {
       if (!game || game.phase !== 'lobby') {
-        return interaction.reply({ content: 'There is no active lobby to join.', ephemeral: true });
+        return interaction.reply({ content: 'There is no active lobby to join.', flags: MessageFlags.Ephemeral });
       }
 
       const added = gameManager.addPlayer(guildId, user);
@@ -143,7 +143,7 @@ module.exports = {
         const reason = game.players.size >= 10
           ? 'The lobby is full (10 players max).'
           : 'You are already in the game.';
-        return interaction.reply({ content: reason, ephemeral: true });
+        return interaction.reply({ content: reason, flags: MessageFlags.Ephemeral });
       }
 
       return interaction.update({
@@ -155,12 +155,12 @@ module.exports = {
     // ── ww_leave ─────────────────────────────────────────────────────────────
     if (customId === 'ww_leave') {
       if (!game || game.phase !== 'lobby') {
-        return interaction.reply({ content: 'There is no active lobby.', ephemeral: true });
+        return interaction.reply({ content: 'There is no active lobby.', flags: MessageFlags.Ephemeral });
       }
 
       const removed = gameManager.removePlayer(guildId, user.id);
       if (!removed) {
-        return interaction.reply({ content: 'You are not in the game.', ephemeral: true });
+        return interaction.reply({ content: 'You are not in the game.', flags: MessageFlags.Ephemeral });
       }
 
       return interaction.update({
@@ -172,15 +172,15 @@ module.exports = {
     // ── ww_start ─────────────────────────────────────────────────────────────
     if (customId === 'ww_start') {
       if (!game || game.phase !== 'lobby') {
-        return interaction.reply({ content: 'There is no active lobby.', ephemeral: true });
+        return interaction.reply({ content: 'There is no active lobby.', flags: MessageFlags.Ephemeral });
       }
       if (user.id !== game.hostId) {
-        return interaction.reply({ content: 'Only the host can start the game.', ephemeral: true });
+        return interaction.reply({ content: 'Only the host can start the game.', flags: MessageFlags.Ephemeral });
       }
       if (game.players.size < 3) {
         return interaction.reply({
           content: `Need at least **3 players** to start. Currently: **${game.players.size}**.`,
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -209,12 +209,12 @@ module.exports = {
     // ── ww_secret ────────────────────────────────────────────────────────────
     if (customId === 'ww_secret') {
       if (!game || game.phase !== 'playing') {
-        return interaction.reply({ content: 'There is no active game.', ephemeral: true });
+        return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
       }
 
       const player = game.players.get(user.id);
       if (!player) {
-        return interaction.reply({ content: 'You are not in this game.', ephemeral: true });
+        return interaction.reply({ content: 'You are not in this game.', flags: MessageFlags.Ephemeral });
       }
 
       // Mayor gets the word-picker UI until they have chosen a word.
@@ -222,13 +222,13 @@ module.exports = {
         if (game.word) {
           return interaction.reply({
             content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}\n\n✅ You chose the magic word: **${game.word}**`,
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
         return interaction.reply({
           content: ROLE_DESCRIPTIONS[ROLES.MAYOR] + '\n\n🔤 **Choose the magic word:**',
           components: buildMayorWordComponents(game.wordOptions),
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -236,11 +236,11 @@ module.exports = {
       const { content, wordPending } = buildSecretContent(player, game.word);
 
       if (!wordPending) {
-        return interaction.reply({ content, ephemeral: true });
+        return interaction.reply({ content, flags: MessageFlags.Ephemeral });
       }
 
       // Word not yet chosen — defer and queue for auto-update.
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       await interaction.editReply({ content });
       game.pendingSecretInteractions.push(interaction);
       return;
@@ -249,12 +249,12 @@ module.exports = {
     // ── ww_word_N (Mayor preset word buttons) ────────────────────────────────
     if (/^ww_word_\d+$/.test(customId)) {
       if (!game || game.phase !== 'playing') {
-        return interaction.reply({ content: 'There is no active game.', ephemeral: true });
+        return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
       }
 
       const player = game.players.get(user.id);
       if (!player || player.role !== ROLES.MAYOR) {
-        return interaction.reply({ content: 'Only the Mayor can pick the magic word.', ephemeral: true });
+        return interaction.reply({ content: 'Only the Mayor can pick the magic word.', flags: MessageFlags.Ephemeral });
       }
 
       if (game.word) {
@@ -264,7 +264,7 @@ module.exports = {
       const index = parseInt(customId.split('_')[2], 10);
       const chosen = game.wordOptions[index];
       if (!chosen) {
-        return interaction.reply({ content: 'Invalid word selection.', ephemeral: true });
+        return interaction.reply({ content: 'Invalid word selection.', flags: MessageFlags.Ephemeral });
       }
 
       game.word = chosen;
@@ -288,18 +288,18 @@ module.exports = {
     // ── ww_word_custom (Mayor opens a modal to type a custom word) ───────────
     if (customId === 'ww_word_custom') {
       if (!game || game.phase !== 'playing') {
-        return interaction.reply({ content: 'There is no active game.', ephemeral: true });
+        return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
       }
 
       const player = game.players.get(user.id);
       if (!player || player.role !== ROLES.MAYOR) {
-        return interaction.reply({ content: 'Only the Mayor can pick the magic word.', ephemeral: true });
+        return interaction.reply({ content: 'Only the Mayor can pick the magic word.', flags: MessageFlags.Ephemeral });
       }
 
       if (game.word) {
         return interaction.reply({
           content: `✅ The magic word is already set to: **${game.word}**`,
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { buildLobbyEmbed, buildLobbyComponents } = require('../game/phases/lobby');
 
 module.exports = {
@@ -15,19 +15,19 @@ module.exports = {
         content:
           '⚠️ A Werewords game is already running in this server. ' +
           'The current game must end before a new lobby can be created.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
     const game = gameManager.createGame(guildId, channelId, user.id, user.username);
     gameManager.addPlayer(guildId, user);
 
-    const reply = await interaction.reply({
+    const { resource } = await interaction.reply({
       embeds: [buildLobbyEmbed(game)],
       components: buildLobbyComponents(),
-      fetchReply: true,
+      withResponse: true,
     });
 
-    game.messageId = reply.id;
+    game.messageId = resource.message.id;
   },
 };
