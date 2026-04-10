@@ -1,0 +1,17 @@
+{
+  "name": "werewords-bot",
+  "version": "1.0.0",
+  "description": "Discord bot for the Werewords social deduction game",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "deploy": "node src/deploy-commands.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

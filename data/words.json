@@ -1,0 +1,28 @@
+{
+  "categories": [
+    {
+      "name": "Animals",
+      "words": ["elephant", "penguin", "giraffe", "dolphin", "cheetah", "hedgehog", "flamingo", "crocodile", "chameleon", "platypus"]
+    },
+    {
+      "name": "Food",
+      "words": ["pizza", "sushi", "chocolate", "avocado", "dumpling", "croissant", "tacos", "kimchi", "pretzel", "cheesecake"]
+    },
+    {
+      "name": "Places",
+      "words": ["volcano", "library", "lighthouse", "pyramid", "glacier", "skyscraper", "aquarium", "waterfall", "cathedral", "labyrinth"]
+    },
+    {
+      "name": "Objects",
+      "words": ["telescope", "umbrella", "compass", "lantern", "hammock", "periscope", "boomerang", "kaleidoscope", "accordion", "hourglass"]
+    },
+    {
+      "name": "Concepts",
+      "words": ["gravity", "echo", "shadow", "rainbow", "silence", "dream", "memory", "rhythm", "paradox", "infinity"]
+    },
+    {
+      "name": "Professions",
+      "words": ["astronaut", "detective", "archaeologist", "surgeon", "conductor", "cartographer", "locksmith", "sommelier", "taxidermist", "archivist"]
+    }
+  ]
+}
