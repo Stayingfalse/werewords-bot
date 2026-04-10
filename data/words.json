@@ -1,28 +1,36 @@
 {
   "categories": [
     {
-      "name": "Animals",
-      "words": ["elephant", "penguin", "giraffe", "dolphin", "cheetah", "hedgehog", "flamingo", "crocodile", "chameleon", "platypus"]
+      "name": "Geography & Landmarks",
+      "words": ["Africa", "Alps", "Amazon", "America", "Antarctica", "Australia", "Beijing", "Berlin", "Bermuda", "Canada", "China", "Egypt", "England", "Europe", "France", "Germany", "Greece", "Himalayas", "Hollywood", "Iceland", "India", "London", "Mexico", "Moscow", "New York", "Olympus", "Pacific", "Rome", "Russia", "Sahara", "Tokyo", "Washington"]
     },
     {
-      "name": "Food",
-      "words": ["pizza", "sushi", "chocolate", "avocado", "dumpling", "croissant", "tacos", "kimchi", "pretzel", "cheesecake"]
+      "name": "Animals & Creatures",
+      "words": ["Alien", "Angel", "Bat", "Bear", "Buffalo", "Bug", "Calf", "Cat", "Centaur", "Chick", "Crane", "Cricket", "Dinosaur", "Dog", "Dragon", "Duck", "Dwarf", "Eagle", "Elephant", "Fish", "Fly", "Frog", "Ghost", "Giant", "Goat", "Hawk", "Horse", "Kangaroo", "Lizard", "Lion", "Mammoth", "Monkey", "Mosquito", "Octopus", "Parrot", "Penguin", "Phoenix", "Pig", "Platypus", "Rabbit", "Rat", "Reindeer", "Scorpion", "Seal", "Shark", "Slug", "Snake", "Spider", "Squirrel", "Tiger", "Turkey", "Unicorn", "Vampire", "Walrus", "Whale", "Worm", "Zombie"]
     },
     {
-      "name": "Places",
-      "words": ["volcano", "library", "lighthouse", "pyramid", "glacier", "skyscraper", "aquarium", "waterfall", "cathedral", "labyrinth"]
+      "name": "Food & Drink",
+      "words": ["Apple", "Bacon", "Banana", "Bean", "Beer", "Berry", "Biscuit", "Bread", "Cake", "Carrot", "Cheese", "Cherry", "Chocolate", "Coffee", "Curry", "Egg", "Gum", "Ham", "Hamburger", "Honey", "Ice Cream", "Jam", "Ketchup", "Kiwi", "Lemon", "Lemonade", "Milk", "Mint", "Mustard", "Olive", "Onion", "Orange", "Pea", "Peach", "Peanut", "Pie", "Pizza", "Popcorn", "Potato", "Pumpkin", "Rice", "Salad", "Salt", "Smoothie", "Soup", "Sugar", "Tea", "Toast"]
     },
     {
-      "name": "Objects",
-      "words": ["telescope", "umbrella", "compass", "lantern", "hammock", "periscope", "boomerang", "kaleidoscope", "accordion", "hourglass"]
+      "name": "Professions & People",
+      "words": ["Agent", "Astronaut", "Blacksmith", "Boss", "Boxer", "Captain", "Cook", "Cowboy", "Crusader", "Dentist", "Detective", "Director", "Doctor", "Driver", "Gangster", "Groom", "Gymnast", "Jeweler", "Jockey", "Judge", "King", "Knight", "Lawyer", "Lumberjack", "Magician", "Medic", "Millionaire", "Mountie", "Ninja", "Nurse", "Pilot", "Pirate", "Police", "Princess", "Queen", "Scientist", "Smuggler", "Soldier", "Spy", "Teacher", "Thief", "Undertaker", "Viking", "Waitress", "Wizard"]
     },
     {
-      "name": "Concepts",
-      "words": ["gravity", "echo", "shadow", "rainbow", "silence", "dream", "memory", "rhythm", "paradox", "infinity"]
+      "name": "Objects & Tools",
+      "words": ["Ambulance", "Axe", "Balloon", "Battery", "Bell", "Belt", "Blueprint", "Board", "Bolt", "Bomb", "Bottle", "Bow", "Box", "Bridge", "Brush", "Button", "Cane", "Chain", "Clock", "Compass", "Computer", "Cone", "Desk", "Dildo", "Drill", "Drum", "Eraser", "Fence", "Flag", "Flute", "Fork", "Glasses", "Guitar", "Hammer", "Helmet", "Hook", "Hourglass", "Ink", "Key", "Knife", "Ladder", "Lantern", "Laser", "Lock", "Microscope", "Mirror", "Missile", "Needle", "Net", "Paddle", "Paper", "Pen", "Piano", "Pillow", "Pipe", "Pistol", "Racket", "Radio", "Razor", "Rifle", "Rope", "Ruler", "Saddle", "Saw", "Screen", "Sextant", "Shampoo", "Shoe", "Soap", "Spoon", "Stethoscope", "Stick", "Tablet", "Telescope", "Tie", "Torch", "Typewriter", "Umbrella", "Vacuum", "Watch", "Whistle"]
     },
     {
-      "name": "Professions",
-      "words": ["astronaut", "detective", "archaeologist", "surgeon", "conductor", "cartographer", "locksmith", "sommelier", "taxidermist", "archivist"]
+      "name": "Nature & Space",
+      "words": ["Air", "Ash", "Asteroid", "Aurora", "Bay", "Blizzard", "Bonsai", "Canyon", "Cave", "Cloud", "Comet", "Crater", "Delta", "Drought", "Earth", "Earthquake", "Eclipse", "Field", "Flood", "Fog", "Forest", "Frost", "Galaxy", "Glacier", "Grass", "Ground", "Ice", "Jupiter", "Leaf", "Lightning", "Maple", "Mars", "Mercury", "Moon", "Mud", "Nebula", "Oasis", "Orbit", "Palm", "Pine", "Rain", "Rainbow", "River", "Rock", "Sand", "Saturn", "Sky", "Snow", "Space", "Star", "Storm", "Sun", "Thunder", "Tornado", "Tundra", "Venus", "Volcano", "Water", "Wave", "Wind", "Wood"]
+    },
+    {
+      "name": "Buildings & Places",
+      "words": ["Aquarium", "Arch", "Attic", "Bank", "Bar", "Barn", "Bath", "Beach", "Casino", "Castle", "Cathedral", "Church", "Citadel", "Cliff", "Court", "Embassy", "Farm", "Garden", "Greenhouse", "Hospital", "Hotel", "House", "Igloo", "Jail", "Kitchen", "Lab", "Library", "Lighthouse", "Market", "Mill", "Monastery", "Motel", "Museum", "Opera", "Park", "Pentagon", "Pool", "Port", "Prison", "Pub", "Pyramid", "Ranch", "Saloon", "School", "Shed", "Shop", "Skyscraper", "Stadium", "Temple", "Theater", "Tower", "Tunnel", "University", "Yard"]
+    },
+    {
+      "name": "Abstract Concepts",
+      "words": ["Apathy", "Beauty", "Bliss", "Change", "Chaos", "Cold", "Courage", "Death", "Dream", "Echo", "Energy", "Euphoria", "Fair", "Fate", "Force", "Genius", "Grace", "Gravity", "Harmony", "Infinity", "Irony", "Life", "Logic", "Love", "Luck", "Memory", "Metaphor", "Night", "Paradox", "Past", "Peace", "Point", "Power", "Rhythm", "Secret", "Shadow", "Silence", "Soul", "Sound", "Space", "Time", "Truth", "Velocity", "War", "Wish"]
     }
   ]
 }

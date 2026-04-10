@@ -2,7 +2,8 @@ const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, Messag
 const {
   buildLobbyEmbed,
   buildLobbyComponents,
-  buildStartingEmbed,
+  buildActiveEmbed,
+  buildGameThreadEmbed,
   buildPlayingComponents,
   buildMayorWordComponents,
 } = require('../game/phases/lobby');
@@ -130,81 +131,111 @@ module.exports = {
     // Ignore buttons that don't belong to this bot.
     if (!customId.startsWith('ww_')) return;
 
-    const game = gameManager.getGame(channelId);
+    // ── Lobby buttons (fired from the main channel; threadId encoded in customId) ──
+    // Format: ww_join_{threadId} | ww_leave_{threadId} | ww_start_{threadId}
+    if (
+      customId.startsWith('ww_join_') ||
+      customId.startsWith('ww_leave_') ||
+      customId.startsWith('ww_start_')
+    ) {
+      const threadId = customId.split('_')[2];
+      const game = gameManager.getGame(threadId);
 
-    // ── ww_join ──────────────────────────────────────────────────────────────
-    if (customId === 'ww_join') {
-      if (!game || game.phase !== 'lobby') {
-        return interaction.reply({ content: 'There is no active lobby to join.', flags: MessageFlags.Ephemeral });
-      }
+      // ── ww_join_{threadId} ─────────────────────────────────────────────────
+      if (customId.startsWith('ww_join_')) {
+        if (!game || game.phase !== 'lobby') {
+          return interaction.reply({ content: 'There is no active lobby to join.', flags: MessageFlags.Ephemeral });
+        }
 
-      const added = gameManager.addPlayer(channelId, user);
-      if (!added) {
-        const reason = game.players.size >= 10
-          ? 'The lobby is full (10 players max).'
-          : 'You are already in the game.';
-        return interaction.reply({ content: reason, flags: MessageFlags.Ephemeral });
-      }
+        const added = gameManager.addPlayer(threadId, user);
+        if (!added) {
+          const reason = game.players.size >= 10
+            ? 'The lobby is full (10 players max).'
+            : 'You are already in the game.';
+          return interaction.reply({ content: reason, flags: MessageFlags.Ephemeral });
+        }
 
-      return interaction.update({
-        embeds: [buildLobbyEmbed(game)],
-        components: buildLobbyComponents(),
-      });
-    }
+        // Add the player to the private game thread.
+        const thread = await client.channels.fetch(threadId).catch(() => null);
+        if (thread) await thread.members.add(user.id).catch(() => {});
 
-    // ── ww_leave ─────────────────────────────────────────────────────────────
-    if (customId === 'ww_leave') {
-      if (!game || game.phase !== 'lobby') {
-        return interaction.reply({ content: 'There is no active lobby.', flags: MessageFlags.Ephemeral });
-      }
-
-      const removed = gameManager.removePlayer(channelId, user.id);
-      if (!removed) {
-        return interaction.reply({ content: 'You are not in the game.', flags: MessageFlags.Ephemeral });
-      }
-
-      return interaction.update({
-        embeds: [buildLobbyEmbed(game)],
-        components: buildLobbyComponents(),
-      });
-    }
-
-    // ── ww_start ─────────────────────────────────────────────────────────────
-    if (customId === 'ww_start') {
-      if (!game || game.phase !== 'lobby') {
-        return interaction.reply({ content: 'There is no active lobby.', flags: MessageFlags.Ephemeral });
-      }
-      if (user.id !== game.hostId) {
-        return interaction.reply({ content: 'Only the host can start the game.', flags: MessageFlags.Ephemeral });
-      }
-      if (game.players.size < 3) {
-        return interaction.reply({
-          content: `Need at least **3 players** to start. Currently: **${game.players.size}**.`,
-          flags: MessageFlags.Ephemeral,
+        return interaction.update({
+          embeds: [buildLobbyEmbed(game)],
+          components: buildLobbyComponents(threadId),
         });
       }
 
-      // Lock the phase immediately to prevent a race condition on double-click.
-      game.phase = 'starting';
-      await interaction.deferUpdate();
+      // ── ww_leave_{threadId} ────────────────────────────────────────────────
+      if (customId.startsWith('ww_leave_')) {
+        if (!game || game.phase !== 'lobby') {
+          return interaction.reply({ content: 'There is no active lobby.', flags: MessageFlags.Ephemeral });
+        }
 
-      // Assign roles and prepare 3 random word options for the Mayor to choose from.
-      gameManager.assignRoles(channelId);
-      game.wordOptions = sampleN(wordPool, 3);
-      // game.word stays null until the Mayor picks.
+        const removed = gameManager.removePlayer(threadId, user.id);
+        if (!removed) {
+          return interaction.reply({ content: 'You are not in the game.', flags: MessageFlags.Ephemeral });
+        }
 
-      // Transition the lobby embed to the "starting" state.
-      game.phase = 'playing';
-      await interaction.editReply({
-        embeds: [buildStartingEmbed(game)],
-        components: buildPlayingComponents(),
-      });
+        // Remove the player from the private thread (requires MANAGE_THREADS — fails gracefully).
+        const thread = await client.channels.fetch(threadId).catch(() => null);
+        if (thread) await thread.members.remove(user.id).catch(() => {});
 
-      // ── TODO (next step) ─────────────────────────────────────────────────
-      // Start the 4-minute countdown timmer, build the game board embed with
-      // Yes / No / Maybe tokens (Mayor-only buttons), and attach an
-      // InteractionCollector for word-guessing modals and voting logic.
+        return interaction.update({
+          embeds: [buildLobbyEmbed(game)],
+          components: buildLobbyComponents(threadId),
+        });
+      }
+
+      // ── ww_start_{threadId} ────────────────────────────────────────────────
+      if (customId.startsWith('ww_start_')) {
+        if (!game || game.phase !== 'lobby') {
+          return interaction.reply({ content: 'There is no active lobby.', flags: MessageFlags.Ephemeral });
+        }
+        if (user.id !== game.hostId) {
+          return interaction.reply({ content: 'Only the host can start the game.', flags: MessageFlags.Ephemeral });
+        }
+        if (game.players.size < 3) {
+          return interaction.reply({
+            content: `Need at least **3 players** to start. Currently: **${game.players.size}**.`,
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+
+        game.phase = 'starting';
+        await interaction.deferUpdate();
+
+        gameManager.assignRoles(threadId);
+        game.wordOptions = sampleN(wordPool, 3);
+
+        game.phase = 'playing';
+
+        // Update the main-channel lobby embed → Game In Progress, no buttons.
+        await interaction.editReply({
+          embeds: [buildActiveEmbed(game)],
+          components: [],
+        });
+
+        // Post the game board embed inside the private thread.
+        const thread = await client.channels.fetch(threadId).catch(() => null);
+        if (thread) {
+          await thread.send({
+            embeds: [buildGameThreadEmbed(game)],
+            components: buildPlayingComponents(),
+          });
+        }
+
+        // ── TODO (next step) ───────────────────────────────────────────────
+        // Start the 4-minute countdown timer, build the game board embed with
+        // Yes / No / Maybe tokens (Mayor-only buttons), and attach an
+        // InteractionCollector for word-guessing modals and voting logic.
+      }
+
+      return;
     }
+
+    // ── Game-thread buttons (fired from inside the private thread) ────────────
+    // interaction.channelId === game.threadId when inside the thread.
+    const game = gameManager.getGame(channelId);
 
     // ── ww_secret ────────────────────────────────────────────────────────────
     if (customId === 'ww_secret') {

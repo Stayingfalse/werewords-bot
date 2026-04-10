@@ -26,7 +26,10 @@ function buildLobbyEmbed(game) {
       'A social deduction game of magic words and hidden roles.\n' +
       'Click **Join** to enter. The host can **Start** when at least 3 players are ready.',
     )
-    .addFields({ name: `Players (${game.players.size} / 10)`, value: playerLines })
+    .addFields(
+      { name: `Players (${game.players.size} / 10)`, value: playerLines },
+      { name: '🧵 Game Thread', value: `<#${game.threadId}>` },
+    )
     .setColor(LOBBY_COLOR)
     .setFooter({ text: `Host: @${game.hostUsername}  •  Minimum 3 players required` })
     .setTimestamp();
@@ -34,22 +37,25 @@ function buildLobbyEmbed(game) {
 
 // ── Lobby action row ───────────────────────────────────────────────────────────
 
-/** Returns the Join / Leave / Start action row for the lobby. */
-function buildLobbyComponents() {
+/**
+ * Returns the Join / Leave / Start action row for the lobby.
+ * @param {string} threadId  The private game thread ID, embedded in each button's customId.
+ */
+function buildLobbyComponents(threadId) {
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId('ww_join')
+        .setCustomId(`ww_join_${threadId}`)
         .setLabel('Join')
         .setEmoji('✋')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
-        .setCustomId('ww_leave')
+        .setCustomId(`ww_leave_${threadId}`)
         .setLabel('Leave')
         .setEmoji('🚪')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId('ww_start')
+        .setCustomId(`ww_start_${threadId}`)
         .setLabel('Start Game')
         .setEmoji('▶️')
         .setStyle(ButtonStyle.Primary),
@@ -57,20 +63,44 @@ function buildLobbyComponents() {
   ];
 }
 
-// ── Starting / transition embed ────────────────────────────────────────────────
+// ── Active game embed (shown in main channel after game starts) ───────────────
 
 /**
- * Replaces the lobby embed once the game has started.
+ * Replaces the lobby embed in the main channel once the game has started.
+ * Shows the game is underway and links to the private game thread.
  * @param {import('../GameManager').GameState} game
  */
-function buildStartingEmbed(game) {
+function buildActiveEmbed(game) {
   const playerMentions =
     [...game.players.values()].map(p => `<@${p.id}>`).join(', ');
 
   return new EmbedBuilder()
-    .setTitle('🐺  Werewords — Starting!')
+    .setTitle('🐺  Werewords — In Progress')
+    .setDescription('A game is currently underway!')
+    .addFields(
+      { name: 'Players', value: playerMentions },
+      { name: '🧵 Game Thread', value: `<#${game.threadId}>` },
+    )
+    .setColor(PLAYING_COLOR)
+    .setFooter({ text: `Host: @${game.hostUsername}` })
+    .setTimestamp();
+}
+
+// ── Game thread embed (first message posted inside the private thread) ─────────
+
+/**
+ * Posted inside the private game thread when the game starts.
+ * @param {import('../GameManager').GameState} game
+ */
+function buildGameThreadEmbed(game) {
+  const playerMentions =
+    [...game.players.values()].map(p => `<@${p.id}>`).join(', ');
+
+  return new EmbedBuilder()
+    .setTitle('🐺  Werewords — Game Started!')
     .setDescription(
-      'Roles have been secretly assigned. Press **View Secret Info** to see your role.\n' +
+      'Roles have been secretly assigned.\n' +
+      'Press **View Secret Info** to see your role.\n' +
       '⏳ The Mayor is choosing the magic word…',
     )
     .addFields({ name: 'Players', value: playerMentions })
@@ -120,7 +150,8 @@ function buildMayorWordComponents(wordOptions) {
 module.exports = {
   buildLobbyEmbed,
   buildLobbyComponents,
-  buildStartingEmbed,
+  buildActiveEmbed,
+  buildGameThreadEmbed,
   buildPlayingComponents,
   buildMayorWordComponents,
 };

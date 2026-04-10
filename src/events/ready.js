@@ -15,7 +15,7 @@ module.exports = {
       PermissionFlagsBits.SendMessages |
       PermissionFlagsBits.EmbedLinks |
       PermissionFlagsBits.ReadMessageHistory |
-      PermissionFlagsBits.CreatePublicThreads |
+      PermissionFlagsBits.CreatePrivateThreads |
       PermissionFlagsBits.SendMessagesInThreads |
       PermissionFlagsBits.ManageThreads;
 

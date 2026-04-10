@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags, ChannelType } = require('discord.js');
 const { buildLobbyEmbed, buildLobbyComponents } = require('../game/phases/lobby');
 
 module.exports = {
@@ -17,7 +17,6 @@ module.exports = {
       try {
         const oldThread = await client.channels.fetch(existing.threadId).catch(() => null);
         if (oldThread) {
-          // Try to delete; fall back to archiving if the bot lacks MANAGE_THREADS.
           await oldThread.delete('Host started a new Werewords game').catch(async () => {
             await oldThread.setArchived(true).catch(() => {});
           });
@@ -27,39 +26,40 @@ module.exports = {
       }
     }
 
-    // Create a fresh public thread for the new game.
+    // Create a private thread for the game players.
     let thread;
     try {
       thread = await channel.threads.create({
         name: `Werewords 🐺 — ${user.username}`,
+        type: ChannelType.PrivateThread,
         autoArchiveDuration: 60,
         reason: `Werewords game started by ${user.username}`,
       });
+      // Add the host to the private thread immediately.
+      await thread.members.add(user.id);
     } catch {
       return interaction.reply({
         content:
           '❌ **Missing permissions.** The bot needs the following in this channel:\n' +
-          '• `Create Public Threads`\n' +
+          '• `Create Private Threads`\n' +
           '• `Send Messages in Threads`\n' +
-          '• `Manage Threads` *(to clean up finished games)*',
+          '• `Manage Threads` *(to clean up finished games)*\n\n' +
+          '*Note: Private threads require a Community server or Boost Level 1+.*',
         flags: MessageFlags.Ephemeral,
       });
     }
 
-    const game = gameManager.createGame(guildId, thread.id, user.id, user.username);
+    const game = gameManager.createGame(guildId, channel.id, thread.id, user.id, user.username);
     gameManager.addPlayer(thread.id, user);
 
-    const message = await thread.send({
+    // Post the lobby embed publicly in the channel as the slash command reply.
+    const { resource } = await interaction.reply({
       embeds: [buildLobbyEmbed(game)],
-      components: buildLobbyComponents(),
+      components: buildLobbyComponents(thread.id),
+      withResponse: true,
     });
 
-    game.messageId = message.id;
-
-    // Acknowledge the slash command in the original channel.
-    return interaction.reply({
-      content: `✅ Your game lobby is ready! Head over to ${thread} to join.`,
-      flags: MessageFlags.Ephemeral,
-    });
+    game.messageId = resource.message.id;
   },
 };
+

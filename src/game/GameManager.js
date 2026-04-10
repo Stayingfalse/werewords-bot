@@ -9,8 +9,9 @@ class GameState {
    * @param {string} hostId
    * @param {string} hostUsername
    */
-  constructor(guildId, threadId, hostId, hostUsername) {
+  constructor(guildId, channelId, threadId, hostId, hostUsername) {
     this.guildId = guildId;
+    this.channelId = channelId; // parent channel where the public lobby embed lives
     this.threadId = threadId;
     this.hostId = hostId;
     this.hostUsername = hostUsername;
@@ -58,8 +59,8 @@ class GameManager {
    * @param {string} hostUsername
    * @returns {GameState}
    */
-  createGame(guildId, threadId, hostId, hostUsername) {
-    const game = new GameState(guildId, threadId, hostId, hostUsername);
+  createGame(guildId, channelId, threadId, hostId, hostUsername) {
+    const game = new GameState(guildId, channelId, threadId, hostId, hostUsername);
     this.games.set(threadId, game);
     return game;
   }
