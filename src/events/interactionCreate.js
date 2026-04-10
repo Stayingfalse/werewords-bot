@@ -7,6 +7,8 @@ const {
   buildPlayingComponents,
   buildMayorWordComponents,
 } = require('../game/phases/lobby');
+const { buildBoardEmbed, buildMayorActionComponents, buildGuessComponents } = require('../game/phases/playing');
+const { endGame } = require('../game/phases/endGame');
 const { ROLES, ROLE_DESCRIPTIONS } = require('../utils/roles');
 const words = require('../../data/words.json');
 
@@ -107,7 +109,8 @@ module.exports = {
         game.word = chosen;
 
         await interaction.reply({
-          content: `✅ You chose the magic word: **${game.word}**`,
+          content: `✅ You chose the magic word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
+          components: buildMayorActionComponents(game.tokens),
           flags: MessageFlags.Ephemeral,
         });
 
@@ -215,19 +218,49 @@ module.exports = {
           components: [],
         });
 
-        // Post the game board embed inside the private thread.
+        // Post the game thread welcome embed + secret info button.
         const thread = await client.channels.fetch(threadId).catch(() => null);
         if (thread) {
           await thread.send({
             embeds: [buildGameThreadEmbed(game)],
             components: buildPlayingComponents(),
           });
-        }
 
-        // ── TODO (next step) ───────────────────────────────────────────────
-        // Start the 4-minute countdown timer, build the game board embed with
-        // Yes / No / Maybe tokens (Mayor-only buttons), and attach an
-        // InteractionCollector for word-guessing modals and voting logic.
+          // Post the live game board with Mayor action buttons.
+          const boardMsg = await thread.send({
+            embeds: [buildBoardEmbed(game)],
+            components: buildMayorActionComponents(game.tokens),
+          }).catch(() => null);
+
+          if (boardMsg) {
+            game.boardMessageId = boardMsg.id;
+          }
+
+          // Start the 4-minute countdown (ticks every 30 s).
+          game.timerInterval = setInterval(async () => {
+            // Bail out if the game ended early via a guess accept.
+            if (game.phase !== 'playing') return;
+
+            game.timeLeft -= 30;
+
+            if (game.timeLeft <= 0) {
+              game.timeLeft = 0;
+              await endGame(game, client, 'werewolf_time');
+              return;
+            }
+
+            // Refresh the board embed with the updated countdown.
+            if (game.boardMessageId) {
+              const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
+              if (bMsg) {
+                await bMsg.edit({
+                  embeds: [buildBoardEmbed(game)],
+                  components: buildMayorActionComponents(game.tokens),
+                }).catch(() => {});
+              }
+            }
+          }, 30_000);
+        }
       }
 
       return;
@@ -248,11 +281,13 @@ module.exports = {
         return interaction.reply({ content: 'You are not in this game.', flags: MessageFlags.Ephemeral });
       }
 
-      // Mayor gets the word-picker UI until they have chosen a word.
+      // Mayor gets the word-picker UI until they have chosen a word;
+      // afterwards they see their word + Yes/No/Maybe action buttons.
       if (player.role === ROLES.MAYOR) {
         if (game.word) {
           return interaction.reply({
-            content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}\n\n✅ You chose the magic word: **${game.word}**`,
+            content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}\n\n✅ You chose the magic word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
+            components: buildMayorActionComponents(game.tokens),
             flags: MessageFlags.Ephemeral,
           });
         }
@@ -301,8 +336,8 @@ module.exports = {
       game.word = chosen;
 
       await interaction.update({
-        content: `✅ You chose the magic word: **${game.word}**`,
-        components: [],
+        content: `✅ You chose the magic word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
+        components: buildMayorActionComponents(game.tokens),
       });
 
       // Resolve all pending Werewolf/Seer interactions.
@@ -349,6 +384,114 @@ module.exports = {
 
       modal.addComponents(new ActionRowBuilder().addComponents(input));
       return interaction.showModal(modal);
+    }
+
+    // ── Yes / No / Maybe (Mayor only — answers a player question) ───────────
+    if (customId === 'ww_yes' || customId === 'ww_no' || customId === 'ww_maybe') {
+      if (!game || game.phase !== 'playing') {
+        return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
+      }
+
+      const player = game.players.get(user.id);
+      if (!player || player.role !== ROLES.MAYOR) {
+        return interaction.reply({ content: 'Only the Mayor can use Yes / No / Maybe.', flags: MessageFlags.Ephemeral });
+      }
+
+      const token = customId.replace('ww_', ''); // 'yes' | 'no' | 'maybe'
+
+      if (game.tokens[token] <= 0) {
+        return interaction.reply({
+          content: `No **${token}** tokens remaining!`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      game.tokens[token]--;
+
+      // deferUpdate acknowledges the interaction; editReply updates the source message.
+      await interaction.deferUpdate();
+
+      // Post the Mayor's public response in the thread.
+      const tokenEmoji = { yes: '✅', no: '❌', maybe: '❔' }[token];
+      const thread = await client.channels.fetch(channelId).catch(() => null);
+      if (thread) {
+        await thread.send({ content: `${tokenEmoji} The Mayor answers: **${token.toUpperCase()}**` }).catch(() => {});
+      }
+
+      const fromBoard = interaction.message.id === game.boardMessageId;
+
+      if (fromBoard) {
+        // Update the board in-place (the source of this interaction).
+        await interaction.editReply({
+          embeds: [buildBoardEmbed(game)],
+          components: buildMayorActionComponents(game.tokens),
+        }).catch(() => {});
+      } else {
+        // Clicked from the Mayor's ephemeral — refresh the ephemeral with new buttons…
+        await interaction.editReply({
+          content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}\n\n✅ Magic word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
+          components: buildMayorActionComponents(game.tokens),
+        }).catch(() => {});
+
+        // … and also refresh the board message.
+        if (thread && game.boardMessageId) {
+          const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
+          if (bMsg) {
+            await bMsg.edit({
+              embeds: [buildBoardEmbed(game)],
+              components: buildMayorActionComponents(game.tokens),
+            }).catch(() => {});
+          }
+        }
+      }
+
+      // Check if any token type reached zero → Werewolves win.
+      if (game.tokens[token] <= 0) {
+        await endGame(game, client, 'werewolf_tokens');
+      }
+
+      return;
+    }
+
+    // ── ww_guess_accept_{guesserId} (Mayor accepts a word guess) ────────────
+    if (customId.startsWith('ww_guess_accept_')) {
+      if (!game || game.phase !== 'playing') {
+        return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
+      }
+
+      const player = game.players.get(user.id);
+      if (!player || player.role !== ROLES.MAYOR) {
+        return interaction.reply({ content: 'Only the Mayor can accept or reject guesses.', flags: MessageFlags.Ephemeral });
+      }
+
+      // Edit the guess announcement to show it was accepted, remove buttons.
+      await interaction.update({
+        content: interaction.message.content + '\n✅ **Accepted by the Mayor — correct!**',
+        components: [],
+      });
+
+      await endGame(game, client, 'villagers_word');
+      return;
+    }
+
+    // ── ww_guess_reject_{guesserId} (Mayor rejects a word guess) ───────────
+    if (customId.startsWith('ww_guess_reject_')) {
+      if (!game || game.phase !== 'playing') {
+        return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
+      }
+
+      const player = game.players.get(user.id);
+      if (!player || player.role !== ROLES.MAYOR) {
+        return interaction.reply({ content: 'Only the Mayor can accept or reject guesses.', flags: MessageFlags.Ephemeral });
+      }
+
+      // Edit the guess announcement to show it was rejected, remove buttons.
+      await interaction.update({
+        content: interaction.message.content + '\n❌ **Rejected by the Mayor — keep guessing!**',
+        components: [],
+      });
+
+      return;
     }
   },
 };

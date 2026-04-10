@@ -16,6 +16,8 @@ class GameState {
     this.hostId = hostId;
     this.hostUsername = hostUsername;
     this.messageId = null;
+    /** Discord message ID of the game board embed posted in the thread. */
+    this.boardMessageId = null;
 
     /** @type {'lobby'|'starting'|'playing'|'voting'|'ended'} */
     this.phase = 'lobby';

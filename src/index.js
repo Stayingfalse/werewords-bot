@@ -8,7 +8,8 @@ const GameManager = require('./game/GameManager');
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    // DirectMessages intent not required — the bot sends DMs but doesn't listen to DM messages.
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent, // Privileged — enable in Discord Dev Portal → Bot → Privileged Gateway Intents
   ],
 });
 
