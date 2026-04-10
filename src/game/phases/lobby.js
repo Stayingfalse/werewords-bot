@@ -60,23 +60,18 @@ function buildLobbyComponents() {
 // ── Starting / transition embed ────────────────────────────────────────────────
 
 /**
- * Replaces the lobby embed while DMs are being sent and the game board loads.
+ * Replaces the lobby embed once the game has started.
  * @param {import('../GameManager').GameState} game
- * @param {number} [failedDMs=0]
  */
-function buildStartingEmbed(game, failedDMs = 0) {
+function buildStartingEmbed(game) {
   const playerMentions =
     [...game.players.values()].map(p => `<@${p.id}>`).join(', ');
-
-  const dmWarning =
-    failedDMs > 0
-      ? `\n⚠️ ${failedDMs} player(s) could not receive a DM — they may have DMs disabled.`
-      : '';
 
   return new EmbedBuilder()
     .setTitle('🐺  Werewords — Starting!')
     .setDescription(
-      `Roles have been secretly assigned. **Check your DMs** for your role and the magic word!${dmWarning}`,
+      'Roles have been secretly assigned. Press **View Secret Info** to see your role.\n' +
+      '⏳ The Mayor is choosing the magic word…',
     )
     .addFields({ name: 'Players', value: playerMentions })
     .setColor(PLAYING_COLOR)
@@ -84,4 +79,48 @@ function buildStartingEmbed(game, failedDMs = 0) {
     .setTimestamp();
 }
 
-module.exports = { buildLobbyEmbed, buildLobbyComponents, buildStartingEmbed };
+// ── Playing-phase components ───────────────────────────────────────────────────
+
+/** Returns the single "View Secret Info" button shown on the playing embed. */
+function buildPlayingComponents() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('ww_secret')
+        .setLabel('View Secret Info')
+        .setEmoji('🔍')
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
+/**
+ * Returns the Mayor's word-picker action row: three preset word buttons and a
+ * "Custom Word" button that opens a modal.
+ * @param {string[]} wordOptions  Three preset words from game.wordOptions
+ */
+function buildMayorWordComponents(wordOptions) {
+  return [
+    new ActionRowBuilder().addComponents(
+      ...wordOptions.map((word, i) =>
+        new ButtonBuilder()
+          .setCustomId(`ww_word_${i}`)
+          .setLabel(word)
+          .setStyle(ButtonStyle.Primary),
+      ),
+      new ButtonBuilder()
+        .setCustomId('ww_word_custom')
+        .setLabel('Custom Word')
+        .setEmoji('✏️')
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
+module.exports = {
+  buildLobbyEmbed,
+  buildLobbyComponents,
+  buildStartingEmbed,
+  buildPlayingComponents,
+  buildMayorWordComponents,
+};

@@ -23,6 +23,15 @@ class GameState {
     this.players = new Map(); // userId → player object
 
     this.word = null;
+    /** @type {string[]} Three preset word options presented to the Mayor. */
+    this.wordOptions = [];
+    /**
+     * Deferred ephemeral interactions from Werewolf/Seer players who clicked
+     * "View Secret Info" before the Mayor chose a word. Each entry is a
+     * Discord Interaction object whose editReply() we call once the word is set.
+     * @type {import('discord.js').ButtonInteraction[]}
+     */
+    this.pendingSecretInteractions = [];
     this.tokens = { yes: 14, no: 5, maybe: 1 };
     this.readyPlayers = new Set();
 
