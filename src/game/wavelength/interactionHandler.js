@@ -31,7 +31,7 @@ const { startRevealPhase } = require('./phases/reveal');
 const { buildRematchComponents, buildSessionSummaryEmbed } = require('./phases/sessionEnd');
 const { generateClueGiverImage, generateGuesserImage } = require('./imageGen');
 
-const spectra = require('../../../data/spectra.json');
+const spectra = require('./spectra.json');
 
 /** Pick 2 unique random spectra from the pool. */
 function sampleSpectra() {
