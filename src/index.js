@@ -4,6 +4,7 @@ const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const GameManager = require('./game/GameManager');
+const WavelengthManager = require('./game/WavelengthManager');
 
 const client = new Client({
   intents: [
@@ -15,6 +16,7 @@ const client = new Client({
 
 client.commands = new Collection();
 client.gameManager = new GameManager();
+client.wavelengthManager = new WavelengthManager();
 
 // ── Load commands ──────────────────────────────────────────────────────────────
 const commandsPath = path.join(__dirname, 'commands');

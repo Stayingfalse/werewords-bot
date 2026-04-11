@@ -3,6 +3,7 @@ version: '3.9'
 services:
   werewords-bot:
     build: .
+    platform: linux/arm64
     restart: unless-stopped
     environment:
       DISCORD_TOKEN: ${DISCORD_TOKEN}

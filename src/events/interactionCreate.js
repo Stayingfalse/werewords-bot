@@ -85,6 +85,12 @@ module.exports = {
     if (interaction.isModalSubmit()) {
       const { customId: modalId, channelId, guildId, user } = interaction;
 
+      // ── Dispatch Wavelength modal ───────────────────────────────────────────
+      if (modalId === 'wl_clue_modal') {
+        const { handleWavelengthInteraction } = require('../game/wavelength/interactionHandler');
+        return handleWavelengthInteraction(interaction, client);
+      }
+
       if (modalId === 'ww_word_modal') {
         const game = gameManager.getGame(channelId);
 
@@ -134,6 +140,12 @@ module.exports = {
     if (!interaction.isButton()) return;
 
     const { customId, channelId, guildId, user } = interaction;
+
+    // ── Dispatch Wavelength interactions ─────────────────────────────────────
+    if (customId.startsWith('wl_')) {
+      const { handleWavelengthInteraction } = require('../game/wavelength/interactionHandler');
+      return handleWavelengthInteraction(interaction, client);
+    }
 
     // Ignore buttons that don't belong to this bot.
     if (!customId.startsWith('ww_')) return;
