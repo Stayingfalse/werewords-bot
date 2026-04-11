@@ -143,7 +143,8 @@ module.exports = {
     if (
       customId.startsWith('ww_join_') ||
       customId.startsWith('ww_leave_') ||
-      customId.startsWith('ww_start_')
+      customId.startsWith('ww_start_') ||
+      customId.startsWith('ww_cancel_')
     ) {
       const threadId = customId.split('_')[2];
       const game = gameManager.getGame(threadId);
