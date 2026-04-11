@@ -285,6 +285,39 @@ module.exports = {
         }
       }
 
+      // ── ww_cancel_{threadId} ──────────────────────────────────────────────
+      if (customId.startsWith('ww_cancel_')) {
+        if (!game || game.phase !== 'lobby') {
+          return interaction.reply({ content: 'There is no active lobby to cancel.', flags: MessageFlags.Ephemeral });
+        }
+        if (user.id !== game.hostId) {
+          return interaction.reply({ content: 'Only the host can cancel the session.', flags: MessageFlags.Ephemeral });
+        }
+
+        await interaction.deferUpdate();
+
+        // Update main channel embed — remove buttons immediately.
+        const cancelledEmbed = new EmbedBuilder()
+          .setTitle('🐺  Werewords — Session Cancelled')
+          .setDescription('The host cancelled the session before it started.')
+          .setColor(0x95A5A6)
+          .setTimestamp();
+        await interaction.editReply({ embeds: [cancelledEmbed], components: [] });
+
+        // Notify the thread and archive after 5 s.
+        const thread = await client.channels.fetch(threadId).catch(() => null);
+        if (thread) {
+          await thread.send({ content: '✖️ The host cancelled the session. This thread will be archived shortly.' }).catch(() => {});
+          setTimeout(async () => {
+            await thread.setLocked(true).catch(() => {});
+            await thread.setArchived(true).catch(() => {});
+          }, 5_000);
+        }
+
+        gameManager.deleteGame(threadId);
+        return;
+      }
+
       return;
     }
 

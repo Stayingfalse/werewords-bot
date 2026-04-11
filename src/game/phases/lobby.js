@@ -59,6 +59,11 @@ function buildLobbyComponents(threadId) {
         .setLabel('Start Game')
         .setEmoji('▶️')
         .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(`ww_cancel_${threadId}`)
+        .setLabel('Cancel')
+        .setEmoji('✖️')
+        .setStyle(ButtonStyle.Danger),
     ),
   ];
 }
