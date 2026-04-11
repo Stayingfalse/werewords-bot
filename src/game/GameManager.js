@@ -38,10 +38,16 @@ class GameState {
     this.tokens = { yes: 14, no: 5, maybe: 1 };
     this.readyPlayers = new Set();
 
-    // Populated during the playing phase (next step)
+    // Populated during the playing phase
     this.timerInterval = null;
     this.timeLeft = 240; // seconds (4 minutes)
     this.collector = null;
+
+    // Populated during reveal / voting phases
+    /** @type {Map<string, string>} userId → targeted userId */
+    this.votes = new Map();
+    /** setTimeout handle for the 90s outer reveal safety net. */
+    this.revealTimeout = null;
   }
 }
 
@@ -92,6 +98,7 @@ class GameManager {
     if (!game) return false;
 
     if (game.timerInterval) clearInterval(game.timerInterval);
+    if (game.revealTimeout) clearTimeout(game.revealTimeout);
     if (game.collector && !game.collector.ended) game.collector.stop('cleanup');
 
     this.games.delete(threadId);

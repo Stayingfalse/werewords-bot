@@ -9,6 +9,8 @@ const {
 } = require('../game/phases/lobby');
 const { buildBoardEmbed, buildMayorActionComponents, buildGuessComponents } = require('../game/phases/playing');
 const { endGame } = require('../game/phases/endGame');
+const { startRevealPhase, buildSeerPickComponents } = require('../game/phases/reveal');
+const { startVotingPhase, tallyVotes } = require('../game/phases/voting');
 const { ROLES, ROLE_DESCRIPTIONS } = require('../utils/roles');
 const words = require('../../data/words.json');
 
@@ -251,7 +253,7 @@ module.exports = {
 
             if (game.timeLeft <= 0) {
               game.timeLeft = 0;
-              await endGame(game, client, 'werewolf_time');
+              await startVotingPhase(game, client);
               return;
             }
 
@@ -463,9 +465,9 @@ module.exports = {
         }
       }
 
-      // Check if any token type reached zero → Werewolves win.
+      // Check if any token type reached zero → trigger voting phase.
       if (game.tokens[token] <= 0) {
-        await endGame(game, client, 'werewolf_tokens');
+        await startVotingPhase(game, client);
       }
 
       return;
@@ -488,7 +490,7 @@ module.exports = {
         components: [],
       });
 
-      await endGame(game, client, 'villagers_word');
+      await startRevealPhase(game, client);
       return;
     }
 
@@ -508,6 +510,130 @@ module.exports = {
         content: interaction.message.content + '\n❌ **Rejected by the Mayor — keep guessing!**',
         components: [],
       });
+
+      return;
+    }
+
+    // ── ww_reveal (Werewolf chooses to reveal during the reveal phase) ────────
+    if (customId === 'ww_reveal') {
+      if (!game || game.phase !== 'reveal') {
+        return interaction.reply({ content: 'The reveal phase is not active.', flags: MessageFlags.Ephemeral });
+      }
+
+      const player = game.players.get(user.id);
+      if (!player || player.role !== ROLES.WEREWOLF) {
+        return interaction.reply({ content: 'Only the Werewolf can reveal themselves.', flags: MessageFlags.Ephemeral });
+      }
+
+      // Cancel the 90 s outer safety timeout — the Werewolf is acting.
+      if (game.revealTimeout) {
+        clearTimeout(game.revealTimeout);
+        game.revealTimeout = null;
+      }
+
+      // Acknowledge the reveal publicly.
+      await interaction.update({
+        content: '🐺 **The Werewolf has revealed themselves!** They now have 20 seconds to identify the Seer…',
+        components: [],
+      });
+
+      // Send the Werewolf an ephemeral Seer-pick panel.
+      await interaction.followUp({
+        content: '🔮 **Pick who you think is the Seer.** You have 20 seconds!',
+        components: buildSeerPickComponents(game.players, user.id),
+        flags: MessageFlags.Ephemeral,
+      });
+
+      // Start the 20 s Seer-guess countdown.
+      game.revealTimeout = setTimeout(async () => {
+        if (game.phase !== 'reveal') return;
+        // Time ran out without a pick → Villagers win.
+        const thread = await client.channels.fetch(game.threadId).catch(() => null);
+        if (thread) {
+          await thread.send({ content: '⏰ The Werewolf ran out of time to identify the Seer — **Villagers win!**' }).catch(() => {});
+        }
+        await endGame(game, client, 'villagers_word');
+      }, 20_000);
+
+      return;
+    }
+
+    // ── ww_seer_pick_{targetId} (Werewolf names who they think is the Seer) ──
+    if (customId.startsWith('ww_seer_pick_')) {
+      if (!game || game.phase !== 'reveal') {
+        return interaction.reply({ content: 'The reveal phase is not active.', flags: MessageFlags.Ephemeral });
+      }
+
+      const player = game.players.get(user.id);
+      if (!player || player.role !== ROLES.WEREWOLF) {
+        return interaction.reply({ content: 'Only the Werewolf can pick the Seer.', flags: MessageFlags.Ephemeral });
+      }
+
+      // Cancel the 20 s seer-guess countdown.
+      if (game.revealTimeout) {
+        clearTimeout(game.revealTimeout);
+        game.revealTimeout = null;
+      }
+
+      const targetId = customId.split('ww_seer_pick_')[1];
+      const target = game.players.get(targetId);
+
+      // Acknowledge the pick (remove ephemeral buttons).
+      await interaction.update({
+        content: `🐺 You picked **${target?.username ?? 'Unknown'}** as the Seer.`,
+        components: [],
+      });
+
+      // Announce result publicly in the thread.
+      const correct = target?.role === ROLES.SEER;
+      const thread = await client.channels.fetch(game.threadId).catch(() => null);
+      if (thread) {
+        await thread.send({
+          content: correct
+            ? `🐺 The Werewolf picked <@${targetId}> as the Seer — **correct!** Werewolves steal the win!`
+            : `🐺 The Werewolf picked <@${targetId}> as the Seer — **wrong!** Villagers hold their win!`,
+        }).catch(() => {});
+      }
+
+      await endGame(game, client, correct ? 'werewolf_seer' : 'villagers_word');
+      return;
+    }
+
+    // ── ww_vote_{targetId} (player votes for who they think is the Werewolf) ──
+    if (customId.startsWith('ww_vote_')) {
+      if (!game || game.phase !== 'voting') {
+        return interaction.reply({ content: 'Voting is not active.', flags: MessageFlags.Ephemeral });
+      }
+
+      const player = game.players.get(user.id);
+      if (!player) {
+        return interaction.reply({ content: 'You are not in this game.', flags: MessageFlags.Ephemeral });
+      }
+
+      const targetId = customId.split('ww_vote_')[1];
+      const target = game.players.get(targetId);
+      if (!target) {
+        return interaction.reply({ content: 'That player is not in the game.', flags: MessageFlags.Ephemeral });
+      }
+
+      const changed = game.votes.has(user.id);
+      game.votes.set(user.id, targetId);
+
+      await interaction.reply({
+        content: changed
+          ? `🗳️ Vote changed to **${target.username}**.`
+          : `🗳️ Voted for **${target.username}**.`,
+        flags: MessageFlags.Ephemeral,
+      });
+
+      // Tally early if every player has voted.
+      if (game.votes.size >= game.players.size) {
+        if (game.revealTimeout) {
+          clearTimeout(game.revealTimeout);
+          game.revealTimeout = null;
+        }
+        await tallyVotes(game, client);
+      }
 
       return;
     }

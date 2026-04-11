@@ -5,7 +5,7 @@ const { EmbedBuilder } = require('discord.js');
 const OUTCOMES = {
   villagers_word: {
     title: '🎉 Villagers Win!',
-    description: 'The magic word was correctly guessed!',
+    description: 'The magic word was correctly guessed and the Werewolf stayed hidden!',
     color: 0x57F287, // green
   },
   werewolf_time: {
@@ -16,6 +16,21 @@ const OUTCOMES = {
   werewolf_tokens: {
     title: '🐺 Werewolves Win!',
     description: 'All tokens were used up before the magic word was guessed.',
+    color: 0xED4245, // red
+  },
+  werewolf_seer: {
+    title: '🐺 Werewolves Win!',
+    description: 'The word was guessed but the Werewolf revealed themselves and correctly identified the Seer!',
+    color: 0xED4245, // red
+  },
+  villagers_vote: {
+    title: '🎉 Villagers Win!',
+    description: 'The Villagers voted correctly and exposed the Werewolf!',
+    color: 0x57F287, // green
+  },
+  werewolf_vote: {
+    title: '🐺 Werewolves Win!',
+    description: 'The Villagers failed to identify the Werewolf.',
     color: 0xED4245, // red
   },
 };
@@ -63,10 +78,14 @@ async function endGame(game, client, outcome) {
   // Guard against being called twice (e.g. timer + simultaneous guess accept).
   if (game.phase === 'ended') return;
 
-  // Stop the timer immediately.
+  // Stop timers immediately.
   if (game.timerInterval) {
     clearInterval(game.timerInterval);
     game.timerInterval = null;
+  }
+  if (game.revealTimeout) {
+    clearTimeout(game.revealTimeout);
+    game.revealTimeout = null;
   }
 
   game.phase = 'ended';
