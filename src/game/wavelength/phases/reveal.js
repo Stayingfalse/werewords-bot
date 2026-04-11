@@ -2,6 +2,8 @@
 
 const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const { generateRevealImage } = require('../imageGen');
+const WavelengthRepository      = require('../../../db/WavelengthRepository');
+const WavelengthStatsRepository = require('../../../db/WavelengthStatsRepository');
 
 // ── Scoring constants ──────────────────────────────────────────────────────────
 const TIER_BULLSEYE = 5;   // ±5  → 4 pts
@@ -105,6 +107,7 @@ function computeScores(game) {
 async function startRevealPhase(game, client) {
   if (game.phase === 'reveal' || game.phase === 'ended') return;
   game.phase = 'reveal';
+  WavelengthRepository.upsert(game);
 
   if (game.guessTimeout) {
     clearTimeout(game.guessTimeout);
@@ -142,6 +145,10 @@ async function startRevealPhase(game, client) {
     guesses:       Object.fromEntries(game.guesses),
     scores,
   });
+
+  // Persist player stats and updated game state.
+  WavelengthStatsRepository.recordRound(game.guildId, game, scores);
+  WavelengthRepository.upsert(game);
 
   // ── Post reveal image ──────────────────────────────────────────────────────
   if (imageBuffer) {

@@ -30,6 +30,7 @@ const { buildNudgeComponents, buildGuessPromptComponents } = require('./phases/g
 const { startRevealPhase } = require('./phases/reveal');
 const { buildRematchComponents, buildSessionSummaryEmbed } = require('./phases/sessionEnd');
 const { generateClueGiverImage, generateGuesserImage } = require('./imageGen');
+const WavelengthRepository = require('../../db/WavelengthRepository');
 
 const spectra = require('./spectra.json');
 
@@ -84,6 +85,7 @@ async function handleWavelengthInteraction(interaction, client) {
 
     game.clue  = raw;
     game.phase = 'guessing';
+    WavelengthRepository.upsert(game);
 
     await interaction.reply({ content: `✅ Clue **"${game.clue}"** submitted! Wait for everyone to guess.`, flags: MessageFlags.Ephemeral });
 
@@ -191,7 +193,10 @@ async function handleWavelengthInteraction(interaction, client) {
       await thread.send({ embeds: [buildGameThreadEmbed(game)] }).catch(() => {});
 
       const boardMsg = await thread.send({ embeds: [buildCluingBoardEmbed(game)], components: [] }).catch(() => null);
-      if (boardMsg) game.boardMessageId = boardMsg.id;
+      if (boardMsg) {
+        game.boardMessageId = boardMsg.id;
+        WavelengthRepository.upsert(game);
+      }
 
       // Send Clue Giver a button to open their private spectrum-pick panel.
       await thread.send({
@@ -275,6 +280,7 @@ async function handleWavelengthInteraction(interaction, client) {
 
     const idx = customId === 'wl_spectrum_0' ? 0 : 1;
     game.chosenSpectrum = game.spectrumOptions[idx];
+    WavelengthRepository.upsert(game);
 
     // Generate the Clue Giver's canvas showing their target.
     let cgImageBuffer = null;
@@ -384,6 +390,7 @@ async function handleWavelengthInteraction(interaction, client) {
     }
 
     guess.position = Math.max(0, Math.min(100, guess.position + delta));
+    WavelengthRepository.upsert(game);
 
     const player = game.players.get(user.id);
     let imageBuffer = null;
@@ -423,6 +430,7 @@ async function handleWavelengthInteraction(interaction, client) {
     }
 
     guess.submitted = true;
+    WavelengthRepository.upsert(game);
 
     // Update the guesser's ephemeral panel to show it's locked.
     const player = game.players.get(user.id);

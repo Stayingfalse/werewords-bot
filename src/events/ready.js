@@ -1,10 +1,11 @@
 const { PermissionFlagsBits } = require('discord.js');
+const { restoreGames } = require('../db/restore');
 
 module.exports = {
   name: 'clientReady',
   once: true,
 
-  execute(client) {
+  async execute(client) {
     console.log(`✅ Logged in as ${client.user.tag}`);
     console.log(`   Serving ${client.guilds.cache.size} guild(s).`);
     console.log(`   Run "npm run deploy" once to register slash commands.`);
@@ -27,5 +28,12 @@ module.exports = {
       `&scope=bot%20applications.commands`;
 
     console.log(`\n🔗 Invite URL (all required permissions):\n   ${inviteUrl}\n`);
+
+    // ── Crash recovery ─────────────────────────────────────────────────────
+    try {
+      await restoreGames(client);
+    } catch (err) {
+      console.error('[Restore] Error during game restore:', err);
+    }
   },
 };

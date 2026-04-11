@@ -1,5 +1,7 @@
 'use strict';
 
+const WavelengthRepository = require('../../../db/WavelengthRepository');
+
 /**
  * Guards against double-calls and delegates to sessionEnd.
  *
@@ -10,6 +12,7 @@
 async function endGame(game, client, scores) {
   if (game.phase === 'ended') return;
   game.phase = 'ended';
+  WavelengthRepository.upsert(game);
 
   if (game.guessTimeout) {
     clearTimeout(game.guessTimeout);

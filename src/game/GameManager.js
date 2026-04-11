@@ -1,4 +1,5 @@
 const { assignRoles } = require('../utils/roles');
+const GameRepository  = require('../db/GameRepository');
 
 // ── GameState ──────────────────────────────────────────────────────────────────
 
@@ -79,7 +80,9 @@ class GameManager {
    */
   createGame(guildId, channelId, threadId, hostId, hostUsername) {
     const game = new GameState(guildId, channelId, threadId, hostId, hostUsername);
+    game._createdAt = Date.now();
     this.games.set(threadId, game);
+    GameRepository.upsert(game);
     return game;
   }
 
@@ -111,6 +114,7 @@ class GameManager {
     if (game.revealTimeout) clearTimeout(game.revealTimeout);
     if (game.collector && !game.collector.ended) game.collector.stop('cleanup');
 
+    GameRepository.remove(threadId);
     this.games.delete(threadId);
     return true;
   }
@@ -146,6 +150,7 @@ class GameManager {
       player.role = null;
     }
 
+    GameRepository.upsert(game);
     return game;
   }
 
@@ -160,6 +165,7 @@ class GameManager {
     if (!game || game.players.has(user.id) || game.players.size >= 10) return false;
 
     game.players.set(user.id, { id: user.id, username: user.username, role: null });
+    GameRepository.upsert(game);
     return true;
   }
 
@@ -171,7 +177,9 @@ class GameManager {
   removePlayer(threadId, userId) {
     const game = this.games.get(threadId);
     if (!game) return false;
-    return game.players.delete(userId);
+    const removed = game.players.delete(userId);
+    if (removed) GameRepository.upsert(game);
+    return removed;
   }
 
   /**
@@ -187,6 +195,7 @@ class GameManager {
     for (const player of assigned) {
       game.players.set(player.id, player);
     }
+    GameRepository.upsert(game);
     return game;
   }
 }

@@ -1,6 +1,6 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { ROLES } = require('../../utils/roles');
-const { recordGame } = require('../../utils/StatsManager');
+const { recordGame } = require('../../db/StatsRepository');
 const { buildLobbyEmbed, buildLobbyComponents } = require('./lobby');
 
 const ROLE_EMOJI = {
@@ -173,7 +173,7 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
   );
 
   // 5. Session summary + action buttons.
-  const { getGuildStats } = require('../../utils/StatsManager');
+  const { getGuildStats } = require('../../db/StatsRepository');
   const guildStats = getGuildStats(game.guildId);
 
   if (thread) {

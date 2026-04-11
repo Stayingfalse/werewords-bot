@@ -1,5 +1,7 @@
 'use strict';
 
+const WavelengthRepository = require('../db/WavelengthRepository');
+
 class WavelengthGameState {
   constructor(guildId, channelId, threadId, hostId, hostUsername) {
     this.guildId       = guildId;
@@ -46,7 +48,9 @@ class WavelengthManager {
   /** Create and register a new game keyed by threadId. */
   createGame(guildId, channelId, threadId, hostId, hostUsername) {
     const game = new WavelengthGameState(guildId, channelId, threadId, hostId, hostUsername);
+    game._createdAt = Date.now();
     this.games.set(threadId, game);
+    WavelengthRepository.upsert(game);
     return game;
   }
 
@@ -71,6 +75,7 @@ class WavelengthManager {
       clearTimeout(game.guessTimeout);
       game.guessTimeout = null;
     }
+    WavelengthRepository.remove(threadId);
     this.games.delete(threadId);
   }
 
@@ -99,6 +104,7 @@ class WavelengthManager {
     game.guesses           = new Map();
 
     // Keep players and sessionHistory.
+    WavelengthRepository.upsert(game);
     return game;
   }
 
@@ -113,6 +119,7 @@ class WavelengthManager {
       username:  user.username,
       avatarURL: user.displayAvatarURL({ extension: 'png', size: 128, forceStatic: true }),
     });
+    WavelengthRepository.upsert(game);
     return true;
   }
 
@@ -120,7 +127,9 @@ class WavelengthManager {
   removePlayer(threadId, userId) {
     const game = this.games.get(threadId);
     if (!game) return false;
-    return game.players.delete(userId);
+    const removed = game.players.delete(userId);
+    if (removed) WavelengthRepository.upsert(game);
+    return removed;
   }
 
   /**
@@ -152,6 +161,7 @@ class WavelengthManager {
     }
 
     game.phase = 'cluing';
+    WavelengthRepository.upsert(game);
   }
 }
 

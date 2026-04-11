@@ -1,6 +1,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { ROLES } = require('../../utils/roles');
 const { endGame } = require('./endGame');
+const GameRepository = require('../../db/GameRepository');
 
 const REVEAL_COLOR = 0xFEE75C; // yellow
 
@@ -86,6 +87,7 @@ async function startRevealPhase(game, client) {
   }
 
   game.phase = 'reveal';
+  GameRepository.upsert(game);
 
   const thread = await client.channels.fetch(game.threadId).catch(() => null);
   if (!thread) {

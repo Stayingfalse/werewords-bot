@@ -1,5 +1,9 @@
 require('dotenv').config();
 
+// Initialise the database (creates schema + migrates stats.json) before
+// anything else so all repositories are ready when the managers start.
+require('./db/database');
+
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const fs = require('fs');
 const path = require('path');

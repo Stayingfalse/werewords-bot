@@ -2,6 +2,7 @@
 
 const { SlashCommandBuilder, MessageFlags, ChannelType } = require('discord.js');
 const { buildLobbyEmbed, buildLobbyComponents } = require('../game/wavelength/phases/lobby');
+const { upsert: upsertWL } = require('../db/WavelengthRepository');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -61,5 +62,6 @@ module.exports = {
     });
 
     game.messageId = resource.message.id;
+    upsertWL(game);
   },
 };

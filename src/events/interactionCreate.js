@@ -12,7 +12,8 @@ const { endGame } = require('../game/phases/endGame');
 const { startRevealPhase, buildSeerPickComponents } = require('../game/phases/reveal');
 const { startVotingPhase, tallyVotes } = require('../game/phases/voting');
 const { buildSessionSummaryEmbed, buildRematchComponents } = require('../game/phases/sessionEnd');
-const { getGuildStats } = require('../utils/StatsManager');
+const { getGuildStats } = require('../db/StatsRepository');
+const { startGameTimer } = require('../game/phases/timer');
 const { ROLES, ROLE_DESCRIPTIONS } = require('../utils/roles');
 const words = require('../../data/words.json');
 
@@ -273,50 +274,13 @@ module.exports = {
 
           if (boardMsg) {
             game.boardMessageId = boardMsg.id;
+            // Persist the boardMessageId now that we have it.
+            const { upsert: upsertGame } = require('../db/GameRepository');
+            upsertGame(game);
           }
 
-          // Tick every second. Discord embed updates happen less often to stay
-          // within rate limits: every 30 s with plenty of time left, every 10 s
-          // inside the last minute, and every 5 s inside the last 30 seconds.
-          //
-          // boardRefreshing prevents concurrent edits from piling up if a
-          // previous edit is still awaiting a rate-limit bucket reset.
-          let boardRefreshing = false;
-
-          game.timerInterval = setInterval(async () => {
-            if (game.phase !== 'playing') return;
-
-            game.timeLeft--;
-
-            if (game.timeLeft <= 0) {
-              game.timeLeft = 0;
-              await startVotingPhase(game, client);
-              return;
-            }
-
-            const updateEvery = game.timeLeft > 60 ? 30
-                              : game.timeLeft > 30 ? 10
-                              : 5;
-
-            if (game.timeLeft % updateEvery === 0 && game.boardMessageId && !boardRefreshing) {
-              boardRefreshing = true;
-              try {
-                const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
-                if (bMsg) {
-                  await bMsg.edit({
-                    embeds: [buildBoardEmbed(game)],
-                    components: buildMayorActionComponents(game.tokens),
-                  }).catch(err => {
-                    if (err?.status === 429) {
-                      console.warn(`[Board] Rate limited editing board (thread ${game.threadId}, ${game.timeLeft}s left) — skipping tick`);
-                    }
-                  });
-                }
-              } finally {
-                boardRefreshing = false;
-              }
-            }
-          }, 1_000);
+          // Tick every second, using the shared timer helper.
+          startGameTimer(game, thread, client);
         }
       }
 
@@ -759,33 +723,11 @@ module.exports = {
 
       if (boardMsg) resetGame.boardMessageId = boardMsg.id;
 
-      let boardRefreshing = false;
-      resetGame.timerInterval = setInterval(async () => {
-        if (resetGame.phase !== 'playing') return;
-        resetGame.timeLeft--;
-        if (resetGame.timeLeft <= 0) {
-          resetGame.timeLeft = 0;
-          await startVotingPhase(resetGame, client);
-          return;
-        }
-        const updateEvery = resetGame.timeLeft > 60 ? 30 : resetGame.timeLeft > 30 ? 10 : 5;
-        if (resetGame.timeLeft % updateEvery === 0 && resetGame.boardMessageId && !boardRefreshing) {
-          boardRefreshing = true;
-          try {
-            const bMsg = await thread.messages.fetch(resetGame.boardMessageId).catch(() => null);
-            if (bMsg) {
-              await bMsg.edit({
-                embeds: [buildBoardEmbed(resetGame)],
-                components: buildMayorActionComponents(resetGame.tokens),
-              }).catch(err => {
-                if (err?.status === 429) console.warn(`[Board] Rate limited (thread ${resetGame.threadId}, ${resetGame.timeLeft}s left)`);
-              });
-            }
-          } finally {
-            boardRefreshing = false;
-          }
-        }
-      }, 1_000);
+      // Also persist the boardMessageId now that we have it.
+      const { upsert: upsertGame } = require('../db/GameRepository');
+      upsertGame(resetGame);
+
+      startGameTimer(resetGame, thread, client);
 
       return;
     }

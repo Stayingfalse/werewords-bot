@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, MessageFlags, ChannelType } = require('discord.js');
 const { buildLobbyEmbed, buildLobbyComponents } = require('../game/phases/lobby');
+const { upsert: upsertGame } = require('../db/GameRepository');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -60,6 +61,7 @@ module.exports = {
     });
 
     game.messageId = resource.message.id;
+    upsertGame(game);
   },
 };
 

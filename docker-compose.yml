@@ -9,4 +9,4 @@ services:
       DISCORD_TOKEN: ${DISCORD_TOKEN}
       CLIENT_ID: ${CLIENT_ID}
     volumes:
-      - ./data:/app/data:ro
+      - ./data:/app/data

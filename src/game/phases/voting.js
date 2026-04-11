@@ -1,6 +1,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { ROLES } = require('../../utils/roles');
 const { endGame } = require('./endGame');
+const GameRepository = require('../../db/GameRepository');
 
 const VOTE_COLOR = 0xEB459E; // pink
 
@@ -103,6 +104,7 @@ async function startVotingPhase(game, client) {
   }
 
   game.phase = 'voting';
+  GameRepository.upsert(game);
 
   const thread = await client.channels.fetch(game.threadId).catch(() => null);
   if (!thread) {

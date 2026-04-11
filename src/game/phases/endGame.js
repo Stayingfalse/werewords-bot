@@ -1,4 +1,5 @@
-const { runEndSequence } = require('./sessionEnd');
+const { runEndSequence }  = require('./sessionEnd');
+const GameRepository      = require('../../db/GameRepository');
 
 // ── Outcome definitions (kept for reference / future use) ─────────────────────
 
@@ -65,6 +66,7 @@ async function endGame(game, client, outcome, seerVictimUserId = null) {
   }
 
   game.phase = 'ended';
+  GameRepository.upsert(game);
 
   // Remove Wordsmith action buttons from the board so they can't be clicked.
   if (game.boardMessageId) {
