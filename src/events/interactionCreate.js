@@ -451,25 +451,27 @@ module.exports = {
         return interaction.reply({ content: 'Only the Wordsmith can use Yes / No / Maybe.', flags: MessageFlags.Ephemeral });
       }
 
-      const token = customId.replace('ww_', ''); // 'yes' | 'no' | 'maybe'
+      const label = customId.replace('ww_', ''); // 'yes' | 'no' | 'maybe' (for display)
+      const isYesNo = customId === 'ww_yes' || customId === 'ww_no';
+      const tokenKey = isYesNo ? 'yes_no' : 'maybe';
 
-      if (game.tokens[token] <= 0) {
+      if (game.tokens[tokenKey] <= 0) {
         return interaction.reply({
-          content: `No **${token}** tokens remaining!`,
+          content: isYesNo ? 'No **Yes / No** tokens remaining!' : 'No **Maybe** tokens remaining!',
           flags: MessageFlags.Ephemeral,
         });
       }
 
-      game.tokens[token]--;
+      game.tokens[tokenKey]--;
 
       // deferUpdate acknowledges the interaction; editReply updates the source message.
       await interaction.deferUpdate();
 
       // Post the Wordsmith's public response in the thread.
-      const tokenEmoji = { yes: '✅', no: '❌', maybe: '❔' }[token];
+      const tokenEmoji = { yes: '✅', no: '❌', maybe: '❔' }[label];
       const thread = await client.channels.fetch(channelId).catch(() => null);
       if (thread) {
-        await thread.send({ content: `${tokenEmoji} The Wordsmith answers: **${token.toUpperCase()}**` }).catch(() => {});
+        await thread.send({ content: `${tokenEmoji} The Wordsmith answers: **${label.toUpperCase()}**` }).catch(() => {});
       }
 
       const fromBoard = interaction.message.id === game.boardMessageId;
@@ -499,16 +501,78 @@ module.exports = {
         }
       }
 
-      // Check if any token type reached zero → trigger voting phase.
-      if (game.tokens[token] <= 0) {
+      // Only trigger voting when the shared Yes/No pool is exhausted.
+      if (isYesNo && game.tokens.yes_no <= 0) {
         await startVotingPhase(game, client);
       }
 
       return;
     }
 
-    // ── ww_guess_accept_{guesserId} (Mayor accepts a word guess) ────────────
-    if (customId.startsWith('ww_guess_accept_')) {
+    // ── ww_end_game (host force-ends an in-progress game) ────────────────────
+    if (customId === 'ww_end_game') {
+      if (!game || (game.phase !== 'playing' && game.phase !== 'voting' && game.phase !== 'reveal')) {
+        return interaction.reply({ content: 'There is no active game to end.', flags: MessageFlags.Ephemeral });
+      }
+
+      if (user.id !== game.hostId) {
+        return interaction.reply({ content: 'Only the host can end the game early.', flags: MessageFlags.Ephemeral });
+      }
+
+      await interaction.deferUpdate();
+      await endGame(game, client, 'host_cancelled');
+      return;
+    }
+
+    // ── ww_correct / ww_soclose / ww_wayoff (board-level — voice-chat mode) ──
+    if (customId === 'ww_correct' || customId === 'ww_soclose' || customId === 'ww_wayoff') {
+      if (!game || game.phase !== 'playing') {
+        return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
+      }
+
+      const player = game.players.get(user.id);
+      if (!player || player.role !== ROLES.MAYOR) {
+        return interaction.reply({ content: 'Only the Wordsmith can use these buttons.', flags: MessageFlags.Ephemeral });
+      }
+
+      if (customId === 'ww_correct') {
+        if (game.tokens.correct <= 0) {
+          return interaction.reply({ content: 'No **Correct** tokens remaining!', flags: MessageFlags.Ephemeral });
+        }
+        game.tokens.correct--;
+        game.winnerGuesserUserId = null; // no specific text guess to credit
+        await interaction.deferUpdate();
+        await startRevealPhase(game, client);
+        return;
+      }
+
+      // ww_soclose or ww_wayoff
+      if (game.tokens.so_close_way_off <= 0) {
+        return interaction.reply({ content: 'No **So Close / Way Off** tokens remaining!', flags: MessageFlags.Ephemeral });
+      }
+      game.tokens.so_close_way_off--;
+
+      await interaction.deferUpdate();
+
+      const thread = await client.channels.fetch(channelId).catch(() => null);
+      if (thread) {
+        const msg = customId === 'ww_soclose'
+          ? '🔥 The Wordsmith signals: **So Close!**'
+          : '❌ The Wordsmith signals: **Way Off!**';
+        await thread.send({ content: msg }).catch(() => {});
+      }
+
+      // Refresh the board buttons to reflect updated token counts.
+      await interaction.editReply({
+        embeds: [buildBoardEmbed(game)],
+        components: buildMayorActionComponents(game.tokens),
+      }).catch(() => {});
+
+      return;
+    }
+
+    // ── ww_guess_correct_{guesserId} (Mayor marks a guess as correct) ────────
+    if (customId.startsWith('ww_guess_correct_')) {
       if (!game || game.phase !== 'playing') {
         return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
       }
@@ -518,22 +582,28 @@ module.exports = {
         return interaction.reply({ content: 'Only the Wordsmith can accept or reject guesses.', flags: MessageFlags.Ephemeral });
       }
 
+      if (game.tokens.correct <= 0) {
+        return interaction.reply({ content: 'No **Correct** tokens remaining!', flags: MessageFlags.Ephemeral });
+      }
+
+      game.tokens.correct--;
+
       // Edit the guess announcement to show it was accepted, remove buttons.
       await interaction.update({
-        content: interaction.message.content + '\n✅ **Accepted by the Wordsmith — correct!**',
+        content: interaction.message.content + '\n✅ **Correct — the word has been guessed!**',
         components: [],
       });
 
       // Credit the stat to whichever player made the accepted guess.
-      const guesserId = customId.split('ww_guess_accept_')[1];
+      const guesserId = customId.split('ww_guess_correct_')[1];
       game.winnerGuesserUserId = guesserId ?? null;
 
       await startRevealPhase(game, client);
       return;
     }
 
-    // ── ww_guess_reject_{guesserId} (Mayor rejects a word guess) ───────────
-    if (customId.startsWith('ww_guess_reject_')) {
+    // ── ww_guess_soclose_{guesserId} / ww_guess_wayoff_{guesserId} ───────────
+    if (customId.startsWith('ww_guess_soclose_') || customId.startsWith('ww_guess_wayoff_')) {
       if (!game || game.phase !== 'playing') {
         return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
       }
@@ -543,9 +613,17 @@ module.exports = {
         return interaction.reply({ content: 'Only the Wordsmith can accept or reject guesses.', flags: MessageFlags.Ephemeral });
       }
 
-      // Edit the guess announcement to show it was rejected, remove buttons.
+      if (game.tokens.so_close_way_off <= 0) {
+        return interaction.reply({ content: 'No **So Close / Way Off** tokens remaining!', flags: MessageFlags.Ephemeral });
+      }
+
+      game.tokens.so_close_way_off--;
+
+      const isSoClose = customId.startsWith('ww_guess_soclose_');
+
+      // Edit the guess announcement to show the result, remove buttons.
       await interaction.update({
-        content: interaction.message.content + '\n❌ **Rejected by the Wordsmith — keep guessing!**',
+        content: interaction.message.content + (isSoClose ? '\n🔥 **So Close — keep guessing!**' : '\n❌ **Way Off — keep guessing!**'),
         components: [],
       });
 

@@ -41,13 +41,14 @@ function buildBoardEmbed(game) {
     )
     .addFields(
       { name: '⏱ Time Remaining', value: formatTime(timeLeft) },
-      { name: '✅ Yes', value: `${tokens.yes} / 14`, inline: true },
-      { name: '❌ No', value: `${tokens.no} / 5`, inline: true },
-      { name: '❔ Maybe', value: `${tokens.maybe} / 1`, inline: true },
+      { name: '✅ ❌  Yes / No', value: `${tokens.yes_no} / 36`, inline: true },
+      { name: '❔ Maybe', value: `${tokens.maybe} / 12`, inline: true },
+      { name: '✅ Correct', value: `${tokens.correct} / 1`, inline: true },
+      { name: '🔥 ❌  So Close / Way Off', value: `${tokens.so_close_way_off} / 2`, inline: true },
       { name: 'Players', value: playerList },
     )
     .setColor(BOARD_COLOR)
-    .setFooter({ text: 'Wordsmith: use the Yes / No / Maybe buttons to answer questions.' })
+    .setFooter({ text: 'Wordsmith: answer questions with Yes / No / Maybe. When a player guesses the word, tap ✅ Correct! or ❌ Way Off! on their guess message.' })
     .setTimestamp();
 }
 
@@ -66,19 +67,39 @@ function buildMayorActionComponents(tokens) {
         .setLabel('Yes')
         .setEmoji('✅')
         .setStyle(ButtonStyle.Success)
-        .setDisabled(tokens.yes <= 0),
+        .setDisabled(tokens.yes_no <= 0),
       new ButtonBuilder()
         .setCustomId('ww_no')
         .setLabel('No')
         .setEmoji('❌')
         .setStyle(ButtonStyle.Danger)
-        .setDisabled(tokens.no <= 0),
+        .setDisabled(tokens.yes_no <= 0),
       new ButtonBuilder()
         .setCustomId('ww_maybe')
         .setLabel('Maybe')
         .setEmoji('❔')
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(tokens.maybe <= 0),
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('ww_correct')
+        .setLabel('Correct!')
+        .setEmoji('✅')
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(tokens.correct <= 0),
+      new ButtonBuilder()
+        .setCustomId('ww_soclose')
+        .setLabel('So Close!')
+        .setEmoji('🔥')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(tokens.so_close_way_off <= 0),
+      new ButtonBuilder()
+        .setCustomId('ww_wayoff')
+        .setLabel('Way Off!')
+        .setEmoji('❌')
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(tokens.so_close_way_off <= 0),
     ),
   ];
 }
@@ -89,18 +110,26 @@ function buildMayorActionComponents(tokens) {
  * Returns the Accept / Reject action row posted when a player makes a guess.
  * Only the Wordsmith can interact with these buttons.
  * @param {string} guesserId  The user ID of the player who made the guess.
+ * @param {{ correct: number, so_close_way_off: number }} tokens
  */
-function buildGuessComponents(guesserId) {
+function buildGuessComponents(guesserId, tokens) {
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`ww_guess_accept_${guesserId}`)
-        .setLabel('Accept ✅')
-        .setStyle(ButtonStyle.Success),
+        .setCustomId(`ww_guess_correct_${guesserId}`)
+        .setLabel('✅ Correct!')
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(tokens.correct <= 0),
       new ButtonBuilder()
-        .setCustomId(`ww_guess_reject_${guesserId}`)
-        .setLabel('Reject ❌')
-        .setStyle(ButtonStyle.Danger),
+        .setCustomId(`ww_guess_soclose_${guesserId}`)
+        .setLabel('🔥 So Close!')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(tokens.so_close_way_off <= 0),
+      new ButtonBuilder()
+        .setCustomId(`ww_guess_wayoff_${guesserId}`)
+        .setLabel('❌ Way Off!')
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(tokens.so_close_way_off <= 0),
     ),
   ];
 }

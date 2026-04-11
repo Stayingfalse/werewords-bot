@@ -36,7 +36,7 @@ class GameState {
      * @type {import('discord.js').ButtonInteraction[]}
      */
     this.pendingSecretInteractions = [];
-    this.tokens = { yes: 14, no: 5, maybe: 1 };
+    this.tokens = { yes_no: 36, maybe: 12, correct: 1, so_close_way_off: 2 };
     this.readyPlayers = new Set();
 
     // Populated during the playing phase
@@ -138,7 +138,7 @@ class GameManager {
     game.word = null;
     game.wordOptions = [];
     game.pendingSecretInteractions = [];
-    game.tokens = { yes: 14, no: 5, maybe: 1 };
+    game.tokens = { yes_no: 36, maybe: 12, correct: 1, so_close_way_off: 2 };
     game.readyPlayers = new Set();
     game.votes = new Map();
     game.boardMessageId = null;

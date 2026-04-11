@@ -34,6 +34,11 @@ const OUTCOMES = {
     description: 'The Townsfolk failed to identify the Demon.',
     color: 0xED4245, // red
   },
+  host_cancelled: {
+    title: '🛑 Game Cancelled',
+    description: 'The host ended the game early.',
+    color: 0x5865F2, // blurple
+  },
 };
 
 // ── End-game logic ─────────────────────────────────────────────────────────────

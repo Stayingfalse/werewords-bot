@@ -73,6 +73,14 @@ async function restoreWerewords(client, GameRepository) {
 
     client.gameManager.games.set(row.thread_id, game);
 
+    // Lobby games are trivial to re-start — drop them silently so users aren't
+    // spammed with a "bot restarted" notice every time a new lobby is created.
+    if (row.phase === 'lobby') {
+      GameRepository.remove(row.thread_id);
+      client.gameManager.games.delete(row.thread_id);
+      continue;
+    }
+
     // Fetch the thread — drop the game if Discord no longer knows about it.
     const thread = await client.channels.fetch(row.thread_id).catch(() => null);
     if (!thread) {
@@ -84,18 +92,7 @@ async function restoreWerewords(client, GameRepository) {
     await thread.send({ content: '⚠️ Bot restarted. Attempting to resume game…' }).catch(() => {});
 
     // ── Phase-specific recovery ────────────────────────────────────────────
-    if (row.phase === 'lobby') {
-      // Re-post lobby embed with buttons in parent channel if we can find the msg.
-      if (game.channelId && game.messageId) {
-        const parentCh = await client.channels.fetch(game.channelId).catch(() => null);
-        if (parentCh) {
-          const { buildLobbyEmbed, buildLobbyComponents } = require('../game/phases/lobby');
-          await parentCh.messages.fetch(game.messageId).then(m =>
-            m.edit({ embeds: [buildLobbyEmbed(game)], components: buildLobbyComponents(game.threadId) })
-          ).catch(() => {});
-        }
-      }
-    } else if (row.phase === 'playing') {
+    if (row.phase === 'playing') {
       // Restart the countdown from saved time_left.
       startGameTimer(game, thread, client);
       if (game.boardMessageId) {
@@ -178,6 +175,13 @@ async function restoreWavelength(client, WavelengthRepository) {
 
     client.wavelengthManager.games.set(row.thread_id, game);
 
+    // Lobby games are trivial to re-start — drop them silently.
+    if (row.phase === 'lobby') {
+      WavelengthRepository.remove(row.thread_id);
+      client.wavelengthManager.games.delete(row.thread_id);
+      continue;
+    }
+
     const thread = await client.channels.fetch(row.thread_id).catch(() => null);
     if (!thread) {
       WavelengthRepository.remove(row.thread_id);
@@ -187,17 +191,7 @@ async function restoreWavelength(client, WavelengthRepository) {
 
     await thread.send({ content: '⚠️ Bot restarted. Attempting to resume Wavelength game…' }).catch(() => {});
 
-    if (row.phase === 'lobby') {
-      if (game.channelId && game.messageId) {
-        const parentCh = await client.channels.fetch(game.channelId).catch(() => null);
-        if (parentCh) {
-          const { buildLobbyEmbed, buildLobbyComponents } = require('../game/wavelength/phases/lobby');
-          await parentCh.messages.fetch(game.messageId).then(m =>
-            m.edit({ embeds: [buildLobbyEmbed(game)], components: buildLobbyComponents(game.threadId) })
-          ).catch(() => {});
-        }
-      }
-    } else if (row.phase === 'cluing') {
+    if (row.phase === 'cluing') {
       // Re-post the "Open Clue Giver Panel" button.
       await thread.send({
         content: `<@${game.clueGiverId}> — the bot restarted. Click below to reopen your Clue Giver panel.`,

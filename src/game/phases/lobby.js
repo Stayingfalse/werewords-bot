@@ -125,6 +125,11 @@ function buildPlayingComponents() {
         .setLabel('View Secret Info')
         .setEmoji('🔍')
         .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('ww_end_game')
+        .setLabel('End Game')
+        .setEmoji('🛑')
+        .setStyle(ButtonStyle.Danger),
     ),
   ];
 }

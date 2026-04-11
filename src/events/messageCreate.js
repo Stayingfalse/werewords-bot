@@ -28,7 +28,7 @@ module.exports = {
     // Accept / Reject buttons only visible to (and usable by) the Wordsmith.
     await message.channel.send({
       content: `🎯 <@${message.author.id}> guesses: **"${message.content}"**`,
-      components: buildGuessComponents(message.author.id),
+      components: buildGuessComponents(message.author.id, game.tokens),
     });
   },
 };
