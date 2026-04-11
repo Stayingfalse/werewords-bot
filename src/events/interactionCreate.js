@@ -1,4 +1,4 @@
-const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, MessageFlags } = require('discord.js');
+const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const {
   buildLobbyEmbed,
   buildLobbyComponents,
@@ -11,6 +11,8 @@ const { buildBoardEmbed, buildMayorActionComponents, buildGuessComponents } = re
 const { endGame } = require('../game/phases/endGame');
 const { startRevealPhase, buildSeerPickComponents } = require('../game/phases/reveal');
 const { startVotingPhase, tallyVotes } = require('../game/phases/voting');
+const { buildSessionSummaryEmbed, buildRematchComponents } = require('../game/phases/sessionEnd');
+const { getGuildStats } = require('../utils/StatsManager');
 const { ROLES, ROLE_DESCRIPTIONS } = require('../utils/roles');
 const words = require('../../data/words.json');
 
@@ -490,6 +492,10 @@ module.exports = {
         components: [],
       });
 
+      // Credit the stat to whichever player made the accepted guess.
+      const guesserId = customId.split('ww_guess_accept_')[1];
+      game.winnerGuesserUserId = guesserId ?? null;
+
       await startRevealPhase(game, client);
       return;
     }
@@ -595,7 +601,7 @@ module.exports = {
         }).catch(() => {});
       }
 
-      await endGame(game, client, correct ? 'werewolf_seer' : 'villagers_word');
+      await endGame(game, client, correct ? 'werewolf_seer' : 'villagers_word', correct ? targetId : null);
       return;
     }
 
@@ -635,6 +641,168 @@ module.exports = {
         await tallyVotes(game, client);
       }
 
+      return;
+    }
+
+    // ── ww_rematch_same (host — restart immediately with same players) ─────────
+    if (customId === 'ww_rematch_same') {
+      if (!game || game.phase !== 'ended') {
+        return interaction.reply({ content: 'No ended game in this thread.', flags: MessageFlags.Ephemeral });
+      }
+      if (user.id !== game.hostId) {
+        return interaction.reply({ content: 'Only the host can start a rematch.', flags: MessageFlags.Ephemeral });
+      }
+
+      await interaction.deferUpdate();
+
+      const resetGame = client.gameManager.resetForRematch(game.threadId, false);
+      if (!resetGame) return;
+
+      client.gameManager.assignRoles(game.threadId);
+      resetGame.wordOptions = sampleN(wordPool, 3);
+
+      // Update main channel embed → In Progress.
+      if (resetGame.channelId && resetGame.messageId) {
+        const channel = await client.channels.fetch(resetGame.channelId).catch(() => null);
+        if (channel) {
+          const lobbyMsg = await channel.messages.fetch(resetGame.messageId).catch(() => null);
+          if (lobbyMsg) {
+            await lobbyMsg.edit({
+              embeds: [buildActiveEmbed(resetGame)],
+              components: [],
+            }).catch(() => {});
+          }
+        }
+      }
+
+      const thread = await client.channels.fetch(game.threadId).catch(() => null);
+      if (!thread) return;
+
+      await thread.send({
+        content: `🔄 **Game ${resetGame.gameNumber} starting — same group!**`,
+        embeds: [buildGameThreadEmbed(resetGame)],
+        components: buildPlayingComponents(),
+      }).catch(() => {});
+
+      const boardMsg = await thread.send({
+        embeds: [buildBoardEmbed(resetGame)],
+        components: buildMayorActionComponents(resetGame.tokens),
+      }).catch(() => null);
+
+      if (boardMsg) resetGame.boardMessageId = boardMsg.id;
+
+      let boardRefreshing = false;
+      resetGame.timerInterval = setInterval(async () => {
+        if (resetGame.phase !== 'playing') return;
+        resetGame.timeLeft--;
+        if (resetGame.timeLeft <= 0) {
+          resetGame.timeLeft = 0;
+          await startVotingPhase(resetGame, client);
+          return;
+        }
+        const updateEvery = resetGame.timeLeft > 60 ? 30 : resetGame.timeLeft > 30 ? 10 : 5;
+        if (resetGame.timeLeft % updateEvery === 0 && resetGame.boardMessageId && !boardRefreshing) {
+          boardRefreshing = true;
+          try {
+            const bMsg = await thread.messages.fetch(resetGame.boardMessageId).catch(() => null);
+            if (bMsg) {
+              await bMsg.edit({
+                embeds: [buildBoardEmbed(resetGame)],
+                components: buildMayorActionComponents(resetGame.tokens),
+              }).catch(err => {
+                if (err?.status === 429) console.warn(`[Board] Rate limited (thread ${resetGame.threadId}, ${resetGame.timeLeft}s left)`);
+              });
+            }
+          } finally {
+            boardRefreshing = false;
+          }
+        }
+      }, 1_000);
+
+      return;
+    }
+
+    // ── ww_rematch_open (host — reopen lobby sign-ups) ────────────────────
+    if (customId === 'ww_rematch_open') {
+      if (!game || game.phase !== 'ended') {
+        return interaction.reply({ content: 'No ended game in this thread.', flags: MessageFlags.Ephemeral });
+      }
+      if (user.id !== game.hostId) {
+        return interaction.reply({ content: 'Only the host can open sign-ups.', flags: MessageFlags.Ephemeral });
+      }
+
+      await interaction.deferUpdate();
+
+      const resetGame = client.gameManager.resetForRematch(game.threadId, true);
+      if (!resetGame) return;
+
+      // Restore main channel lobby embed with buttons active.
+      if (resetGame.channelId && resetGame.messageId) {
+        const channel = await client.channels.fetch(resetGame.channelId).catch(() => null);
+        if (channel) {
+          const lobbyMsg = await channel.messages.fetch(resetGame.messageId).catch(() => null);
+          if (lobbyMsg) {
+            await lobbyMsg.edit({
+              embeds: [buildLobbyEmbed(resetGame)],
+              components: buildLobbyComponents(resetGame.threadId),
+            }).catch(() => {});
+          }
+        }
+      }
+
+      const thread = await client.channels.fetch(game.threadId).catch(() => null);
+      if (thread) {
+        await thread.send({
+          content: `📋 **Game ${resetGame.gameNumber} sign-ups open!** New players can click **Join** in the lobby to enter.`,
+        }).catch(() => {});
+      }
+
+      return;
+    }
+
+    // ── ww_close_session (host — end the session, archive thread) ─────────
+    if (customId === 'ww_close_session') {
+      if (!game || game.phase !== 'ended') {
+        return interaction.reply({ content: 'No ended game in this thread.', flags: MessageFlags.Ephemeral });
+      }
+      if (user.id !== game.hostId) {
+        return interaction.reply({ content: 'Only the host can close the session.', flags: MessageFlags.Ephemeral });
+      }
+
+      await interaction.deferUpdate();
+
+      const thread = await client.channels.fetch(game.threadId).catch(() => null);
+      if (thread) {
+        const guildStats = getGuildStats(game.guildId);
+        await thread.send({
+          content: '🔒 **Session closed.** Thanks for playing!',
+          embeds: [buildSessionSummaryEmbed(game, guildStats)],
+        }).catch(() => {});
+
+        setTimeout(async () => {
+          await thread.setLocked(true).catch(() => {});
+          await thread.setArchived(true).catch(() => {});
+        }, 5_000);
+      }
+
+      // Update main channel embed.
+      if (game.channelId && game.messageId) {
+        const channel = await client.channels.fetch(game.channelId).catch(() => null);
+        if (channel) {
+          const lobbyMsg = await channel.messages.fetch(game.messageId).catch(() => null);
+          if (lobbyMsg) {
+            const closedEmbed = new EmbedBuilder()
+              .setTitle('🐺  Werewords — Session Ended')
+              .setDescription(`${game.gameNumber} game${game.gameNumber !== 1 ? 's' : ''} played. Thanks for playing!`)
+              .addFields({ name: '🧵 Game Thread', value: `<#${game.threadId}>` })
+              .setColor(0x5865F2)
+              .setTimestamp();
+            await lobbyMsg.edit({ embeds: [closedEmbed], components: [] }).catch(() => {});
+          }
+        }
+      }
+
+      client.gameManager.deleteGame(game.threadId);
       return;
     }
   },

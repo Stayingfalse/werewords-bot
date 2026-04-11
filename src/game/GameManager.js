@@ -46,8 +46,18 @@ class GameState {
     // Populated during reveal / voting phases
     /** @type {Map<string, string>} userId → targeted userId */
     this.votes = new Map();
-    /** setTimeout handle for the 90s outer reveal safety net. */
+    /** setTimeout handle for the 90s outer reveal safety net / voting window. */
     this.revealTimeout = null;
+
+    // Session tracking
+    this.gameNumber = 1;
+    /**
+     * Results of previous games in this session.
+     * @type {Array<{gameNumber: number, outcome: string, word: string|null, players: Array}>}
+     */
+    this.sessionHistory = [];
+    /** userId of the player whose guess was accepted (for stats credit). */
+    this.winnerGuesserUserId = null;
   }
 }
 
@@ -103,6 +113,40 @@ class GameManager {
 
     this.games.delete(threadId);
     return true;
+  }
+
+  /**
+   * Resets the game for a rematch without destroying the session.
+   * @param {string} threadId
+   * @param {boolean} openSignups  true = back to lobby; false = straight to playing
+   * @returns {GameState|null}
+   */
+  resetForRematch(threadId, openSignups) {
+    const game = this.games.get(threadId);
+    if (!game) return null;
+
+    // Stop any lingering timers.
+    if (game.timerInterval) { clearInterval(game.timerInterval); game.timerInterval = null; }
+    if (game.revealTimeout) { clearTimeout(game.revealTimeout); game.revealTimeout = null; }
+
+    game.gameNumber++;
+    game.phase = openSignups ? 'lobby' : 'playing';
+    game.word = null;
+    game.wordOptions = [];
+    game.pendingSecretInteractions = [];
+    game.tokens = { yes: 14, no: 5, maybe: 1 };
+    game.readyPlayers = new Set();
+    game.votes = new Map();
+    game.boardMessageId = null;
+    game.winnerGuesserUserId = null;
+    game.timeLeft = 240;
+
+    // Reset roles so they get reassigned on start.
+    for (const player of game.players.values()) {
+      player.role = null;
+    }
+
+    return game;
   }
 
   /**

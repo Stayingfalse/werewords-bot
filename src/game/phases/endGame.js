@@ -1,6 +1,6 @@
-const { EmbedBuilder } = require('discord.js');
+const { runEndSequence } = require('./sessionEnd');
 
-// ── Outcome definitions ────────────────────────────────────────────────────────
+// ── Outcome definitions (kept for reference / future use) ─────────────────────
 
 const OUTCOMES = {
   villagers_word: {
@@ -35,47 +35,23 @@ const OUTCOMES = {
   },
 };
 
-// ── End-game embed ─────────────────────────────────────────────────────────────
-
-/**
- * @param {import('../GameManager').GameState} game
- * @param {keyof OUTCOMES} outcome
- */
-function buildEndEmbed(game, outcome) {
-  const { title, description, color } = OUTCOMES[outcome];
-
-  const roleLines = [...game.players.values()]
-    .map(p => `<@${p.id}> — **${p.role}**`)
-    .join('\n');
-
-  return new EmbedBuilder()
-    .setTitle(title)
-    .setDescription(description)
-    .addFields(
-      { name: '🔤 The Magic Word Was', value: `**${game.word || '*(never chosen)*'}**` },
-      { name: 'Player Roles', value: roleLines },
-    )
-    .setColor(color)
-    .setTimestamp();
-}
-
 // ── End-game logic ─────────────────────────────────────────────────────────────
 
 /**
  * Finalises the game:
- *  1. Clears the countdown timer.
- *  2. Sets phase to 'ended' and removes Mayor action buttons from the board.
- *  3. Posts the end-game result embed in the private thread.
- *  4. Updates the main-channel embed to show the game ended (no buttons).
- *  5. Archives and locks the thread after 30 s.
- *  6. Deletes the game from the registry.
+ *  1. Clears timers and sets phase to 'ended'.
+ *  2. Removes Mayor action buttons from the board.
+ *  3. Delegates presentation to runEndSequence (sequential reveal, stats, rematch buttons).
+ *  4. Does NOT delete the game from the registry — the session lives on until
+ *     the host clicks "Close Session".
  *
  * @param {import('../GameManager').GameState} game
  * @param {import('discord.js').Client} client
- * @param {'villagers_word'|'werewolf_time'|'werewolf_tokens'} outcome
+ * @param {string} outcome
+ * @param {string|null} [seerVictimUserId]  userId the Werewolf correctly named as Seer.
  */
-async function endGame(game, client, outcome) {
-  // Guard against being called twice (e.g. timer + simultaneous guess accept).
+async function endGame(game, client, outcome, seerVictimUserId = null) {
+  // Guard against being called twice.
   if (game.phase === 'ended') return;
 
   // Stop timers immediately.
@@ -90,48 +66,17 @@ async function endGame(game, client, outcome) {
 
   game.phase = 'ended';
 
-  const thread = await client.channels.fetch(game.threadId).catch(() => null);
-
-  if (thread) {
-    // Remove Mayor action buttons from the board so they can't be clicked
-    // in the 30-second window before the thread is archived.
-    if (game.boardMessageId) {
+  // Remove Mayor action buttons from the board so they can't be clicked.
+  if (game.boardMessageId) {
+    const thread = await client.channels.fetch(game.threadId).catch(() => null);
+    if (thread) {
       const boardMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
-      if (boardMsg) {
-        await boardMsg.edit({ components: [] }).catch(() => {});
-      }
-    }
-
-    // Post the end-game result embed.
-    await thread.send({ embeds: [buildEndEmbed(game, outcome)] }).catch(() => {});
-
-    // Archive and lock the thread after 30 seconds.
-    setTimeout(async () => {
-      await thread.setLocked(true).catch(() => {});
-      await thread.setArchived(true).catch(() => {});
-    }, 30_000);
-  }
-
-  // Update the main-channel embed to reflect the game ended.
-  if (game.channelId && game.messageId) {
-    const channel = await client.channels.fetch(game.channelId).catch(() => null);
-    if (channel) {
-      const lobbyMsg = await channel.messages.fetch(game.messageId).catch(() => null);
-      if (lobbyMsg) {
-        const { title, description, color } = OUTCOMES[outcome];
-        const endedEmbed = new EmbedBuilder()
-          .setTitle(`🐺  Werewords — ${title}`)
-          .setDescription(description)
-          .addFields({ name: '🔤 The Magic Word Was', value: `**${game.word || '*(never chosen)*'}**` })
-          .setColor(color)
-          .setTimestamp();
-        await lobbyMsg.edit({ embeds: [endedEmbed], components: [] }).catch(() => {});
-      }
+      if (boardMsg) await boardMsg.edit({ components: [] }).catch(() => {});
     }
   }
 
-  // Remove the game from the registry (also clears any remaining timer ref).
-  client.gameManager.deleteGame(game.threadId);
+  // Hand off to the full end-game presentation sequence.
+  await runEndSequence(game, client, outcome, seerVictimUserId);
 }
 
 module.exports = { endGame };
