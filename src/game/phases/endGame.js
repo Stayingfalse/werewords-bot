@@ -4,33 +4,33 @@ const { runEndSequence } = require('./sessionEnd');
 
 const OUTCOMES = {
   villagers_word: {
-    title: '🎉 Villagers Win!',
-    description: 'The magic word was correctly guessed and the Werewolf stayed hidden!',
+    title: '🎉 Townsfolk Win!',
+    description: 'The forbidden word was correctly guessed and the Demon stayed hidden!',
     color: 0x57F287, // green
   },
   werewolf_time: {
-    title: '🐺 Werewolves Win!',
-    description: 'Time ran out before the magic word was guessed.',
+    title: '😈 Demons Win!',
+    description: 'Time ran out before the forbidden word was guessed.',
     color: 0xED4245, // red
   },
   werewolf_tokens: {
-    title: '🐺 Werewolves Win!',
-    description: 'All tokens were used up before the magic word was guessed.',
+    title: '😈 Demons Win!',
+    description: 'All tokens were used up before the forbidden word was guessed.',
     color: 0xED4245, // red
   },
   werewolf_seer: {
-    title: '🐺 Werewolves Win!',
-    description: 'The word was guessed but the Werewolf revealed themselves and correctly identified the Seer!',
+    title: '😈 Demons Win!',
+    description: 'The word was guessed but the Demon revealed themselves and correctly identified the Librarian!',
     color: 0xED4245, // red
   },
   villagers_vote: {
-    title: '🎉 Villagers Win!',
-    description: 'The Villagers voted correctly and exposed the Werewolf!',
+    title: '🎉 Townsfolk Win!',
+    description: 'The Townsfolk voted correctly and exposed the Demon!',
     color: 0x57F287, // green
   },
   werewolf_vote: {
-    title: '🐺 Werewolves Win!',
-    description: 'The Villagers failed to identify the Werewolf.',
+    title: '😈 Demons Win!',
+    description: 'The Townsfolk failed to identify the Demon.',
     color: 0xED4245, // red
   },
 };
@@ -40,7 +40,7 @@ const OUTCOMES = {
 /**
  * Finalises the game:
  *  1. Clears timers and sets phase to 'ended'.
- *  2. Removes Mayor action buttons from the board.
+ *  2. Removes Wordsmith action buttons from the board.
  *  3. Delegates presentation to runEndSequence (sequential reveal, stats, rematch buttons).
  *  4. Does NOT delete the game from the registry — the session lives on until
  *     the host clicks "Close Session".
@@ -48,7 +48,7 @@ const OUTCOMES = {
  * @param {import('../GameManager').GameState} game
  * @param {import('discord.js').Client} client
  * @param {string} outcome
- * @param {string|null} [seerVictimUserId]  userId the Werewolf correctly named as Seer.
+ * @param {string|null} [seerVictimUserId]  userId the Demon correctly named as Librarian.
  */
 async function endGame(game, client, outcome, seerVictimUserId = null) {
   // Guard against being called twice.
@@ -66,7 +66,7 @@ async function endGame(game, client, outcome, seerVictimUserId = null) {
 
   game.phase = 'ended';
 
-  // Remove Mayor action buttons from the board so they can't be clicked.
+  // Remove Wordsmith action buttons from the board so they can't be clicked.
   if (game.boardMessageId) {
     const thread = await client.channels.fetch(game.threadId).catch(() => null);
     if (thread) {

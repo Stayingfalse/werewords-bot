@@ -33,11 +33,11 @@ function buildBoardEmbed(game) {
   const playerList = [...players.values()].map(p => `<@${p.id}>`).join(' • ');
 
   return new EmbedBuilder()
-    .setTitle('🐺  Werewords — Game Board')
+    .setTitle('🔮  The Forbidden Word — Game Board')
     .setDescription(
       game.word
-        ? '🔤 The magic word has been chosen. Type any message in this thread to make a guess!'
-        : '⏳ Waiting for the Mayor to choose the magic word…',
+        ? '🔤 The forbidden word has been chosen. Type any message in this thread to make a guess!'
+        : '⏳ Waiting for the Wordsmith to choose the forbidden word…',
     )
     .addFields(
       { name: '⏱ Time Remaining', value: formatTime(timeLeft) },
@@ -47,14 +47,14 @@ function buildBoardEmbed(game) {
       { name: 'Players', value: playerList },
     )
     .setColor(BOARD_COLOR)
-    .setFooter({ text: 'Mayor: use the Yes / No / Maybe buttons to answer questions.' })
+    .setFooter({ text: 'Wordsmith: use the Yes / No / Maybe buttons to answer questions.' })
     .setTimestamp();
 }
 
-// ── Mayor action buttons ───────────────────────────────────────────────────────
+// ── Wordsmith action buttons ──────────────────────────────────────────────────
 
 /**
- * Returns the Mayor's Yes / No / Maybe action row.
+ * Returns the Wordsmith's Yes / No / Maybe action row.
  * Buttons are disabled when the corresponding token count reaches zero.
  * @param {{ yes: number, no: number, maybe: number }} tokens
  */
@@ -87,7 +87,7 @@ function buildMayorActionComponents(tokens) {
 
 /**
  * Returns the Accept / Reject action row posted when a player makes a guess.
- * Only the Mayor can interact with these buttons.
+ * Only the Wordsmith can interact with these buttons.
  * @param {string} guesserId  The user ID of the player who made the guess.
  */
 function buildGuessComponents(guesserId) {

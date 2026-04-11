@@ -8,12 +8,12 @@ const REVEAL_COLOR = 0xFEE75C; // yellow
 
 function buildRevealEmbed(game) {
   return new EmbedBuilder()
-    .setTitle('🐺  Werewords — The Word Was Guessed!')
+    .setTitle('�  The Forbidden Word — The Word Was Guessed!')
     .setDescription(
-      `The magic word **"${game.word}"** was correctly guessed!\n\n` +
-      '**Werewolf:** you may now reveal yourself to attempt to identify the Seer.\n' +
-      'If you correctly name the Seer, your team steals the win!\n\n' +
-      '_If you choose not to reveal, the Villagers win._',
+      `The forbidden word **"${game.word}"** was correctly guessed!\n\n` +
+      '**Demon:** you may now reveal yourself to attempt to identify the Librarian.\n' +
+      'If you correctly name the Librarian, your team steals the win!\n\n' +
+      '_If you choose not to reveal, the Townsfolk win._',
     )
     .setColor(REVEAL_COLOR)
     .setTimestamp();
@@ -21,22 +21,22 @@ function buildRevealEmbed(game) {
 
 // ── Components ─────────────────────────────────────────────────────────────────
 
-/** Single button for the Werewolf to kick off the reveal. */
+/** Single button for the Demon to kick off the reveal. */
 function buildRevealComponents() {
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('ww_reveal')
         .setLabel('Reveal Yourself')
-        .setEmoji('🐺')
+        .setEmoji('😈')
         .setStyle(ButtonStyle.Danger),
     ),
   ];
 }
 
 /**
- * One button per player who could be the Seer (excludes the Werewolf themselves
- * and the Mayor, since neither can be the Seer).
+ * One button per player who could be the Librarian (excludes the Demon themselves
+ * and the Wordsmith, since neither can be the Librarian).
  * @param {Map<string, {id: string, username: string, role: string}>} players
  * @param {string} werewolfId
  */
@@ -65,7 +65,7 @@ function buildSeerPickComponents(players, werewolfId) {
 
 /**
  * Transitions the game into the reveal phase.
- * - If no Seer exists (3-player game) the Villagers win immediately.
+ * - If no Librarian exists (3-player game) the Townsfolk win immediately.
  * - Otherwise posts the reveal message with a 90 s safety timeout.
  *
  * @param {import('../GameManager').GameState} game
@@ -78,7 +78,7 @@ async function startRevealPhase(game, client) {
     game.timerInterval = null;
   }
 
-  // No Seer in this game → Villagers win straight away.
+  // No Librarian in this game → Townsfolk win straight away.
   const hasSeer = [...game.players.values()].some(p => p.role === ROLES.SEER);
   if (!hasSeer) {
     await endGame(game, client, 'villagers_word');
@@ -93,7 +93,7 @@ async function startRevealPhase(game, client) {
     return;
   }
 
-  // Remove Mayor action buttons from the board now that the word phase is over.
+  // Remove Wordsmith action buttons from the board now that the word phase is over.
   if (game.boardMessageId) {
     const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
     if (bMsg) await bMsg.edit({ components: [] }).catch(() => {});
@@ -104,7 +104,7 @@ async function startRevealPhase(game, client) {
     components: buildRevealComponents(),
   }).catch(() => {});
 
-  // 90 s safety net — if the Werewolf goes AFK the Villagers win.
+  // 90 s safety net — if the Demon goes AFK the Townsfolk win.
   game.revealTimeout = setTimeout(async () => {
     if (game.phase !== 'reveal') return;
     await endGame(game, client, 'villagers_word');

@@ -4,7 +4,7 @@ const { buildLobbyEmbed, buildLobbyComponents } = require('../game/phases/lobby'
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('werewords')
-    .setDescription('Start a new Werewords game lobby in this channel'),
+    .setDescription('Start a new The Forbidden Word game lobby in this channel'),
 
   async execute(interaction, client) {
     const { guildId, user, channel } = interaction;
@@ -17,7 +17,7 @@ module.exports = {
       try {
         const oldThread = await client.channels.fetch(existing.threadId).catch(() => null);
         if (oldThread) {
-          await oldThread.delete('Host started a new Werewords game').catch(async () => {
+          await oldThread.delete('Host started a new The Forbidden Word game').catch(async () => {
             await oldThread.setArchived(true).catch(() => {});
           });
         }
@@ -30,10 +30,10 @@ module.exports = {
     let thread;
     try {
       thread = await channel.threads.create({
-        name: `Werewords 🐺 — ${user.username}`,
+        name: `The Forbidden Word � — ${user.username}`,
         type: ChannelType.PrivateThread,
         autoArchiveDuration: 60,
-        reason: `Werewords game started by ${user.username}`,
+        reason: `The Forbidden Word game started by ${user.username}`,
       });
       // Add the host to the private thread immediately.
       await thread.members.add(user.id);

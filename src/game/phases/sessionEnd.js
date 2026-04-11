@@ -4,10 +4,10 @@ const { recordGame } = require('../../utils/StatsManager');
 const { buildLobbyEmbed, buildLobbyComponents } = require('./lobby');
 
 const ROLE_EMOJI = {
-  [ROLES.MAYOR]:    '🏛️',
-  [ROLES.WEREWOLF]: '🐺',
-  [ROLES.SEER]:     '🔮',
-  [ROLES.VILLAGER]: '🌾',
+  [ROLES.MAYOR]:    '📝',
+  [ROLES.WEREWOLF]: '😈',
+  [ROLES.SEER]:     '📚',
+  [ROLES.VILLAGER]: '🏡',
 };
 
 const OUTCOME_COLOR = {
@@ -20,12 +20,12 @@ const OUTCOME_COLOR = {
 };
 
 const OUTCOME_BANNER = {
-  villagers_word:  { title: '🎉  Villagers Win!',   description: 'The magic word was guessed correctly — and the Werewolf stayed hidden!' },
-  villagers_vote:  { title: '🎉  Villagers Win!',   description: 'The Villagers correctly voted out the Werewolf!' },
-  werewolf_time:   { title: '🐺  Werewolves Win!',  description: 'Time ran out before the magic word was guessed.' },
-  werewolf_tokens: { title: '🐺  Werewolves Win!',  description: 'All tokens were exhausted before the magic word was guessed.' },
-  werewolf_seer:   { title: '🐺  Werewolves Win!',  description: 'The Werewolf revealed and correctly identified the Seer — stealing the win!' },
-  werewolf_vote:   { title: '🐺  Werewolves Win!',  description: 'The Villagers failed to unmask the Werewolf.' },
+  villagers_word:  { title: '🎉  Townsfolk Win!',   description: 'The forbidden word was guessed correctly — and the Demon stayed hidden!' },
+  villagers_vote:  { title: '🎉  Townsfolk Win!',   description: 'The Townsfolk correctly voted out the Demon!' },
+  werewolf_time:   { title: '😈  Demons Win!',      description: 'Time ran out before the forbidden word was guessed.' },
+  werewolf_tokens: { title: '😈  Demons Win!',      description: 'All tokens were exhausted before the forbidden word was guessed.' },
+  werewolf_seer:   { title: '😈  Demons Win!',      description: 'The Demon revealed and correctly identified the Librarian — stealing the win!' },
+  werewolf_vote:   { title: '😈  Demons Win!',      description: 'The Townsfolk failed to unmask the Demon.' },
 };
 
 // ── Embeds ─────────────────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ function buildWinnerEmbed(game, outcome) {
   return new EmbedBuilder()
     .setTitle(title)
     .setDescription(description)
-    .addFields({ name: '🔤 The Magic Word', value: `**${game.word || '*(never chosen)*'}**` })
+    .addFields({ name: '🔤 The Forbidden Word', value: `**${game.word || '*(never chosen)*'}**` })
     .setColor(OUTCOME_COLOR[outcome])
     .setTimestamp();
 }
@@ -124,7 +124,7 @@ function delay(ms) {
  * @param {import('../GameManager').GameState} game
  * @param {import('discord.js').Client} client
  * @param {string} outcome
- * @param {string|null} seerVictimUserId  The userId the Werewolf correctly named (if any).
+ * @param {string|null} seerVictimUserId  The userId the Demon correctly named (if any).
  */
 async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
   const thread = await client.channels.fetch(game.threadId).catch(() => null);
@@ -191,7 +191,7 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
       if (lobbyMsg) {
         const { title } = OUTCOME_BANNER[outcome];
         const waitEmbed = new EmbedBuilder()
-          .setTitle(`🐺  Werewords — Game ${game.gameNumber} Complete`)
+          .setTitle(`�  The Forbidden Word — Game ${game.gameNumber} Complete`)
           .setDescription(`**${title}** — waiting for the host to start the next game or close the session.`)
           .addFields({ name: '🧵 Game Thread', value: `<#${game.threadId}>` })
           .setColor(OUTCOME_COLOR[outcome])

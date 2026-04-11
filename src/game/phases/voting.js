@@ -12,11 +12,11 @@ function buildVoteEmbed(game) {
   const timeStr = `<t:${Math.floor((Date.now() + VOTE_DURATION) / 1000)}:R>`;
 
   return new EmbedBuilder()
-    .setTitle('🗳️  Werewords — Vote!')
+    .setTitle('🗳️  The Forbidden Word — Vote!')
     .setDescription(
-      'The magic word was **not** guessed in time!\n\n' +
-      'Vote for who you think the **Werewolf** is. ' +
-      'If the majority picks correctly, the Villagers win!\n\n' +
+      'The forbidden word was **not** guessed in time!\n\n' +
+      'Vote for who you think the **Demon** is. ' +
+      'If the majority picks correctly, the Townsfolk win!\n\n' +
       `Voting closes ${timeStr}. You can change your vote before it ends.`,
     )
     .setColor(VOTE_COLOR)
@@ -52,7 +52,7 @@ function buildVoteComponents(players) {
 
 /**
  * Counts current votes, determines the winner, and calls endGame.
- * Tie → werewolf_vote (Werewolves win). Majority on Werewolf → villagers_vote.
+ * Tie → werewolf_vote (Demons win). Majority on Demon → townsfolk_vote.
  *
  * @param {import('../GameManager').GameState} game
  * @param {import('discord.js').Client} client
@@ -73,13 +73,13 @@ async function tallyVotes(game, client) {
     .filter(([, count]) => count === maxVotes)
     .map(([id]) => id);
 
-  // Tie → Werewolves win.
+  // Tie → Demons win.
   if (topTargets.length !== 1) {
     await endGame(game, client, 'werewolf_vote');
     return;
   }
 
-  // Check if the top target is the Werewolf.
+  // Check if the top target is the Demon.
   const suspected = game.players.get(topTargets[0]);
   const isWerewolf = suspected?.role === ROLES.WEREWOLF;
 
@@ -110,7 +110,7 @@ async function startVotingPhase(game, client) {
     return;
   }
 
-  // Remove Mayor action buttons from the board.
+  // Remove Wordsmith action buttons from the board.
   if (game.boardMessageId) {
     const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
     if (bMsg) await bMsg.edit({ components: [] }).catch(() => {});

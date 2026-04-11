@@ -1,29 +1,29 @@
 const ROLES = Object.freeze({
-  MAYOR: 'Mayor',
-  WEREWOLF: 'Werewolf',
-  SEER: 'Seer',
-  VILLAGER: 'Villager',
+  MAYOR: 'Wordsmith',
+  WEREWOLF: 'Demon',
+  SEER: 'Librarian',
+  VILLAGER: 'Townsfolk',
 });
 
 const ROLE_DESCRIPTIONS = Object.freeze({
   [ROLES.MAYOR]:
-    'You are the **Mayor** 🏛️\n\n' +
-    "You know the magic word. Answer your fellow villagers' questions using only **Yes**, **No**, or " +
+    'You are the **Wordsmith** 📝\n\n' +
+    "You know the forbidden word. Answer your fellow townsfolk's questions using only **Yes**, **No**, or " +
     '**Maybe** via the buttons on the game board. You **cannot speak** during the game — your answers are your only voice!',
 
   [ROLES.WEREWOLF]:
-    'You are the **Werewolf** 🐺\n\n' +
-    'You already know the magic word. Pretend you don\'t! Blend in with the villagers, ask misleading ' +
+    'You are the **Demon** 😈\n\n' +
+    'You already know the forbidden word. Pretend you don\'t! Blend in with the townsfolk, ask misleading ' +
     'questions, and stop them from guessing the word before time runs out.',
 
   [ROLES.SEER]:
-    'You are the **Seer** 🔮\n\n' +
-    'You know the magic word. Subtly guide the villagers toward the answer — without revealing that you ' +
-    'already know it. The Werewolf will be watching for you!',
+    'You are the **Librarian** 📚\n\n' +
+    'You know the forbidden word. Subtly guide the townsfolk toward the answer — without revealing that you ' +
+    'already know it. The Demon will be watching for you!',
 
   [ROLES.VILLAGER]:
-    'You are a **Villager** 🧑‍🌾\n\n' +
-    "You don't know the magic word. Ask strategic yes/no questions, listen to the Mayor's answers, and " +
+    'You are a **Townsfolk** 🏡\n\n' +
+    "You don't know the forbidden word. Ask strategic yes/no questions, listen to the Wordsmith's answers, and " +
     'work together to guess the word before time runs out!',
 });
 
@@ -31,8 +31,8 @@ const ROLE_DESCRIPTIONS = Object.freeze({
  * Assigns roles to a shuffled copy of the player array.
  *
  * Distribution:
- *   3 players  → Mayor, Werewolf, Villager
- *   4+ players → Mayor, Werewolf, Seer, ...Villagers
+ *   3 players  → Wordsmith, Demon, Townsfolk
+ *   4+ players → Wordsmith, Demon, Librarian, ...Townsfolk
  *
  * @param {Array<{id: string, username: string}>} players
  * @returns {Array<{id: string, username: string, role: string}>}
@@ -40,7 +40,7 @@ const ROLE_DESCRIPTIONS = Object.freeze({
  */
 function assignRoles(players) {
   if (players.length < 3) {
-    throw new Error('At least 3 players are required to start Werewords.');
+    throw new Error('At least 3 players are required to start The Forbidden Word.');
   }
 
   // Fisher-Yates shuffle for fair randomisation

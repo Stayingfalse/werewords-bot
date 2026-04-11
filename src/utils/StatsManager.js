@@ -25,7 +25,7 @@ function defaultEntry() {
     gamesPlayed: 0,
     wins: 0,
     losses: 0,
-    rolesPlayed: { Mayor: 0, Werewolf: 0, Seer: 0, Villager: 0 },
+    rolesPlayed: { Wordsmith: 0, Demon: 0, Librarian: 0, Townsfolk: 0 },
     correctGuesses: 0,
     timesIdentifiedAsSeer: 0,
   };
@@ -35,12 +35,12 @@ function defaultEntry() {
 
 /** Returns the set of roles that WIN for a given outcome. */
 const WINNER_ROLES = {
-  villagers_word:   new Set(['Mayor', 'Seer', 'Villager']),
-  villagers_vote:   new Set(['Mayor', 'Seer', 'Villager']),
-  werewolf_time:    new Set(['Werewolf']),
-  werewolf_tokens:  new Set(['Werewolf']),
-  werewolf_seer:    new Set(['Werewolf']),
-  werewolf_vote:    new Set(['Werewolf']),
+  villagers_word:   new Set(['Wordsmith', 'Librarian', 'Townsfolk']),
+  villagers_vote:   new Set(['Wordsmith', 'Librarian', 'Townsfolk']),
+  werewolf_time:    new Set(['Demon']),
+  werewolf_tokens:  new Set(['Demon']),
+  werewolf_seer:    new Set(['Demon']),
+  werewolf_vote:    new Set(['Demon']),
 };
 
 // ── Public API ─────────────────────────────────────────────────────────────────

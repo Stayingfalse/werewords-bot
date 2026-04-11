@@ -21,9 +21,9 @@ function buildLobbyEmbed(game) {
       .join('\n') || '*No players yet — be the first to join!*';
 
   return new EmbedBuilder()
-    .setTitle('🐺  Werewords — Lobby')
+    .setTitle('🔮  The Forbidden Word — Lobby')
     .setDescription(
-      'A social deduction game of magic words and hidden roles.\n' +
+      'A social deduction game of forbidden words and hidden roles.\n' +
       'Click **Join** to enter. The host can **Start** when at least 3 players are ready.',
     )
     .addFields(
@@ -80,7 +80,7 @@ function buildActiveEmbed(game) {
     [...game.players.values()].map(p => `<@${p.id}>`).join(', ');
 
   return new EmbedBuilder()
-    .setTitle('🐺  Werewords — In Progress')
+    .setTitle('🔮  The Forbidden Word — In Progress')
     .setDescription('A game is currently underway!')
     .addFields(
       { name: 'Players', value: playerMentions },
@@ -102,11 +102,11 @@ function buildGameThreadEmbed(game) {
     [...game.players.values()].map(p => `<@${p.id}>`).join(', ');
 
   return new EmbedBuilder()
-    .setTitle('🐺  Werewords — Game Started!')
+    .setTitle('🔮  The Forbidden Word — Game Started!')
     .setDescription(
       'Roles have been secretly assigned.\n' +
       'Press **View Secret Info** to see your role.\n' +
-      '⏳ The Mayor is choosing the magic word…',
+      '⏳ The Wordsmith is choosing the forbidden word…',
     )
     .addFields({ name: 'Players', value: playerMentions })
     .setColor(PLAYING_COLOR)
@@ -130,7 +130,7 @@ function buildPlayingComponents() {
 }
 
 /**
- * Returns the Mayor's word-picker action row: three preset word buttons and a
+ * Returns the Wordsmith's word-picker action row: three preset word buttons and a
  * "Custom Word" button that opens a modal.
  * @param {string[]} wordOptions  Three preset words from game.wordOptions
  */

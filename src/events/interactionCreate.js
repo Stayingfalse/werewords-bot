@@ -45,13 +45,13 @@ function buildSecretContent(player, word) {
 
   if (word) {
     return {
-      content: `${roleDesc}\n\n🔤 The magic word is: **${word}**`,
+      content: `${roleDesc}\n\n🔤 The forbidden word is: **${word}**`,
       wordPending: false,
     };
   }
 
   return {
-    content: `${roleDesc}\n\n⏳ The Mayor is still choosing the magic word — this message will update automatically once it is chosen.`,
+    content: `${roleDesc}\n\n⏳ The Wordsmith is still choosing the forbidden word — this message will update automatically once it is chosen.`,
     wordPending: true,
   };
 }
@@ -94,12 +94,12 @@ module.exports = {
 
         const player = game.players.get(user.id);
         if (!player || player.role !== ROLES.MAYOR) {
-          return interaction.reply({ content: 'Only the Mayor can pick the magic word.', flags: MessageFlags.Ephemeral });
+          return interaction.reply({ content: 'Only the Wordsmith can pick the forbidden word.', flags: MessageFlags.Ephemeral });
         }
 
         if (game.word) {
           return interaction.reply({
-            content: `✅ The magic word is already set to: **${game.word}**`,
+            content: `✅ The forbidden word is already set to: **${game.word}**`,
             flags: MessageFlags.Ephemeral,
           });
         }
@@ -107,18 +107,18 @@ module.exports = {
         const raw = interaction.fields.getTextInputValue('ww_word_input');
         const chosen = raw.trim();
         if (!chosen) {
-          return interaction.reply({ content: 'The magic word cannot be blank.', flags: MessageFlags.Ephemeral });
+          return interaction.reply({ content: 'The forbidden word cannot be blank.', flags: MessageFlags.Ephemeral });
         }
 
         game.word = chosen;
 
         await interaction.reply({
-          content: `✅ You chose the magic word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
+          content: `✅ You chose the forbidden word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
           components: buildMayorActionComponents(game.tokens),
           flags: MessageFlags.Ephemeral,
         });
 
-        // Resolve all pending Werewolf/Seer interactions.
+        // Resolve all pending Demon/Librarian interactions.
         for (const pending of game.pendingSecretInteractions) {
           const pendingPlayer = game.players.get(pending.user.id);
           if (!pendingPlayer) continue;
@@ -298,7 +298,7 @@ module.exports = {
 
         // Update main channel embed — remove buttons immediately.
         const cancelledEmbed = new EmbedBuilder()
-          .setTitle('🐺  Werewords — Session Cancelled')
+          .setTitle('�  The Forbidden Word — Session Cancelled')
           .setDescription('The host cancelled the session before it started.')
           .setColor(0x95A5A6)
           .setTimestamp();
@@ -336,24 +336,24 @@ module.exports = {
         return interaction.reply({ content: 'You are not in this game.', flags: MessageFlags.Ephemeral });
       }
 
-      // Mayor gets the word-picker UI until they have chosen a word;
+      // Wordsmith gets the word-picker UI until they have chosen a word;
       // afterwards they see their word + Yes/No/Maybe action buttons.
       if (player.role === ROLES.MAYOR) {
         if (game.word) {
           return interaction.reply({
-            content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}\n\n✅ You chose the magic word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
+            content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}\n\n✅ You chose the forbidden word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
             components: buildMayorActionComponents(game.tokens),
             flags: MessageFlags.Ephemeral,
           });
         }
         return interaction.reply({
-          content: ROLE_DESCRIPTIONS[ROLES.MAYOR] + '\n\n🔤 **Choose the magic word:**',
+          content: ROLE_DESCRIPTIONS[ROLES.MAYOR] + '\n\n🔤 **Choose the forbidden word:**',
           components: buildMayorWordComponents(game.wordOptions),
           flags: MessageFlags.Ephemeral,
         });
       }
 
-      // Werewolf / Seer / Villager
+      // Demon / Librarian / Townsfolk
       const { content, wordPending } = buildSecretContent(player, game.word);
 
       if (!wordPending) {
@@ -375,11 +375,11 @@ module.exports = {
 
       const player = game.players.get(user.id);
       if (!player || player.role !== ROLES.MAYOR) {
-        return interaction.reply({ content: 'Only the Mayor can pick the magic word.', flags: MessageFlags.Ephemeral });
+        return interaction.reply({ content: 'Only the Wordsmith can pick the forbidden word.', flags: MessageFlags.Ephemeral });
       }
 
       if (game.word) {
-        return interaction.update({ content: `✅ The magic word is already set to: **${game.word}**`, components: [] });
+        return interaction.update({ content: `✅ The forbidden word is already set to: **${game.word}**`, components: [] });
       }
 
       const index = parseInt(customId.split('_')[2], 10);
@@ -391,11 +391,11 @@ module.exports = {
       game.word = chosen;
 
       await interaction.update({
-        content: `✅ You chose the magic word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
+        content: `✅ You chose the forbidden word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
         components: buildMayorActionComponents(game.tokens),
       });
 
-      // Resolve all pending Werewolf/Seer interactions.
+      // Resolve all pending Demon/Librarian interactions.
       for (const pending of game.pendingSecretInteractions) {
         const pendingPlayer = game.players.get(pending.user.id);
         if (!pendingPlayer) continue;
@@ -414,23 +414,23 @@ module.exports = {
 
       const player = game.players.get(user.id);
       if (!player || player.role !== ROLES.MAYOR) {
-        return interaction.reply({ content: 'Only the Mayor can pick the magic word.', flags: MessageFlags.Ephemeral });
+        return interaction.reply({ content: 'Only the Wordsmith can pick the forbidden word.', flags: MessageFlags.Ephemeral });
       }
 
       if (game.word) {
         return interaction.reply({
-          content: `✅ The magic word is already set to: **${game.word}**`,
+          content: `✅ The forbidden word is already set to: **${game.word}**`,
           flags: MessageFlags.Ephemeral,
         });
       }
 
       const modal = new ModalBuilder()
         .setCustomId('ww_word_modal')
-        .setTitle('Enter the Magic Word');
+        .setTitle('Enter the Forbidden Word');
 
       const input = new TextInputBuilder()
         .setCustomId('ww_word_input')
-        .setLabel('Magic word (max 50 characters)')
+        .setLabel('Forbidden word (max 50 characters)')
         .setStyle(TextInputStyle.Short)
         .setMinLength(1)
         .setMaxLength(50)
@@ -449,7 +449,7 @@ module.exports = {
 
       const player = game.players.get(user.id);
       if (!player || player.role !== ROLES.MAYOR) {
-        return interaction.reply({ content: 'Only the Mayor can use Yes / No / Maybe.', flags: MessageFlags.Ephemeral });
+        return interaction.reply({ content: 'Only the Wordsmith can use Yes / No / Maybe.', flags: MessageFlags.Ephemeral });
       }
 
       const token = customId.replace('ww_', ''); // 'yes' | 'no' | 'maybe'
@@ -466,11 +466,11 @@ module.exports = {
       // deferUpdate acknowledges the interaction; editReply updates the source message.
       await interaction.deferUpdate();
 
-      // Post the Mayor's public response in the thread.
+      // Post the Wordsmith's public response in the thread.
       const tokenEmoji = { yes: '✅', no: '❌', maybe: '❔' }[token];
       const thread = await client.channels.fetch(channelId).catch(() => null);
       if (thread) {
-        await thread.send({ content: `${tokenEmoji} The Mayor answers: **${token.toUpperCase()}**` }).catch(() => {});
+        await thread.send({ content: `${tokenEmoji} The Wordsmith answers: **${token.toUpperCase()}**` }).catch(() => {});
       }
 
       const fromBoard = interaction.message.id === game.boardMessageId;
@@ -484,7 +484,7 @@ module.exports = {
       } else {
         // Clicked from the Mayor's ephemeral — refresh the ephemeral with new buttons…
         await interaction.editReply({
-          content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}\n\n✅ Magic word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
+          content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}\n\n✅ Forbidden word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
           components: buildMayorActionComponents(game.tokens),
         }).catch(() => {});
 
@@ -516,12 +516,12 @@ module.exports = {
 
       const player = game.players.get(user.id);
       if (!player || player.role !== ROLES.MAYOR) {
-        return interaction.reply({ content: 'Only the Mayor can accept or reject guesses.', flags: MessageFlags.Ephemeral });
+        return interaction.reply({ content: 'Only the Wordsmith can accept or reject guesses.', flags: MessageFlags.Ephemeral });
       }
 
       // Edit the guess announcement to show it was accepted, remove buttons.
       await interaction.update({
-        content: interaction.message.content + '\n✅ **Accepted by the Mayor — correct!**',
+        content: interaction.message.content + '\n✅ **Accepted by the Wordsmith — correct!**',
         components: [],
       });
 
@@ -541,12 +541,12 @@ module.exports = {
 
       const player = game.players.get(user.id);
       if (!player || player.role !== ROLES.MAYOR) {
-        return interaction.reply({ content: 'Only the Mayor can accept or reject guesses.', flags: MessageFlags.Ephemeral });
+        return interaction.reply({ content: 'Only the Wordsmith can accept or reject guesses.', flags: MessageFlags.Ephemeral });
       }
 
       // Edit the guess announcement to show it was rejected, remove buttons.
       await interaction.update({
-        content: interaction.message.content + '\n❌ **Rejected by the Mayor — keep guessing!**',
+        content: interaction.message.content + '\n❌ **Rejected by the Wordsmith — keep guessing!**',
         components: [],
       });
 
@@ -561,7 +561,7 @@ module.exports = {
 
       const player = game.players.get(user.id);
       if (!player || player.role !== ROLES.WEREWOLF) {
-        return interaction.reply({ content: 'Only the Werewolf can reveal themselves.', flags: MessageFlags.Ephemeral });
+        return interaction.reply({ content: 'Only the Demon can reveal themselves.', flags: MessageFlags.Ephemeral });
       }
 
       // Cancel the 90 s outer safety timeout — the Werewolf is acting.
@@ -572,24 +572,24 @@ module.exports = {
 
       // Acknowledge the reveal publicly.
       await interaction.update({
-        content: '🐺 **The Werewolf has revealed themselves!** They now have 20 seconds to identify the Seer…',
+        content: '� **The Demon has revealed themselves!** They now have 20 seconds to identify the Librarian…',
         components: [],
       });
 
-      // Send the Werewolf an ephemeral Seer-pick panel.
+      // Send the Demon an ephemeral Librarian-pick panel.
       await interaction.followUp({
-        content: '🔮 **Pick who you think is the Seer.** You have 20 seconds!',
+        content: '📚 **Pick who you think is the Librarian.** You have 20 seconds!',
         components: buildSeerPickComponents(game.players, user.id),
         flags: MessageFlags.Ephemeral,
       });
 
-      // Start the 20 s Seer-guess countdown.
+      // Start the 20 s Librarian-guess countdown.
       game.revealTimeout = setTimeout(async () => {
         if (game.phase !== 'reveal') return;
-        // Time ran out without a pick → Villagers win.
+        // Time ran out without a pick → Townsfolk win.
         const thread = await client.channels.fetch(game.threadId).catch(() => null);
         if (thread) {
-          await thread.send({ content: '⏰ The Werewolf ran out of time to identify the Seer — **Villagers win!**' }).catch(() => {});
+          await thread.send({ content: '⏰ The Demon ran out of time to identify the Librarian — **Townsfolk win!**' }).catch(() => {});
         }
         await endGame(game, client, 'villagers_word');
       }, 20_000);
@@ -605,7 +605,7 @@ module.exports = {
 
       const player = game.players.get(user.id);
       if (!player || player.role !== ROLES.WEREWOLF) {
-        return interaction.reply({ content: 'Only the Werewolf can pick the Seer.', flags: MessageFlags.Ephemeral });
+        return interaction.reply({ content: 'Only the Demon can pick the Librarian.', flags: MessageFlags.Ephemeral });
       }
 
       // Cancel the 20 s seer-guess countdown.
@@ -619,7 +619,7 @@ module.exports = {
 
       // Acknowledge the pick (remove ephemeral buttons).
       await interaction.update({
-        content: `🐺 You picked **${target?.username ?? 'Unknown'}** as the Seer.`,
+        content: `� You picked **${target?.username ?? 'Unknown'}** as the Librarian.`,
         components: [],
       });
 
@@ -629,8 +629,8 @@ module.exports = {
       if (thread) {
         await thread.send({
           content: correct
-            ? `🐺 The Werewolf picked <@${targetId}> as the Seer — **correct!** Werewolves steal the win!`
-            : `🐺 The Werewolf picked <@${targetId}> as the Seer — **wrong!** Villagers hold their win!`,
+            ? `😈 The Demon picked <@${targetId}> as the Librarian — **correct!** Demons steal the win!`
+            : `😈 The Demon picked <@${targetId}> as the Librarian — **wrong!** Townsfolk hold their win!`,
         }).catch(() => {});
       }
 
@@ -825,7 +825,7 @@ module.exports = {
           const lobbyMsg = await channel.messages.fetch(game.messageId).catch(() => null);
           if (lobbyMsg) {
             const closedEmbed = new EmbedBuilder()
-              .setTitle('🐺  Werewords — Session Ended')
+              .setTitle('�  The Forbidden Word — Session Ended')
               .setDescription(`${game.gameNumber} game${game.gameNumber !== 1 ? 's' : ''} played. Thanks for playing!`)
               .addFields({ name: '🧵 Game Thread', value: `<#${game.threadId}>` })
               .setColor(0x5865F2)
