@@ -5,6 +5,8 @@ const {
   TextInputBuilder,
   TextInputStyle,
   ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   AttachmentBuilder,
   EmbedBuilder,
   MessageFlags,
@@ -83,7 +85,7 @@ async function handleWavelengthInteraction(interaction, client) {
     game.clue  = raw;
     game.phase = 'guessing';
 
-    await interaction.update({ content: `✅ Clue **"${game.clue}"** submitted! Wait for everyone to guess.`, components: [] });
+    await interaction.reply({ content: `✅ Clue **"${game.clue}"** submitted! Wait for everyone to guess.`, flags: MessageFlags.Ephemeral });
 
     // Update the board and post the public guess-prompt button.
     const thread = await client.channels.fetch(game.threadId).catch(() => null);
@@ -191,22 +193,17 @@ async function handleWavelengthInteraction(interaction, client) {
       const boardMsg = await thread.send({ embeds: [buildCluingBoardEmbed(game)], components: [] }).catch(() => null);
       if (boardMsg) game.boardMessageId = boardMsg.id;
 
-      // Send Clue Giver their ephemeral spectrum-pick panel.
-      const clueGiverPlayer = game.players.get(game.clueGiverId);
-      let cgImageBuffer = null;
-      // We can't show the target yet since they haven't picked a spectrum;
-      // just show the spectrum choices. After they pick we'll generate the image.
+      // Send Clue Giver a button to open their private spectrum-pick panel.
       await thread.send({
         content: `<@${game.clueGiverId}> — you're the **Clue Giver**! Click below to receive your private panel.`,
-        components: [{
-          type: 1,
-          components: [{
-            type: 2,
-            style: 1,
-            label: 'Open Clue Giver Panel',
-            custom_id: 'wl_open_cg_panel',
-          }],
-        }],
+        components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId('wl_open_cg_panel')
+              .setLabel('Open Clue Giver Panel')
+              .setStyle(ButtonStyle.Primary),
+          ),
+        ],
       }).catch(() => {});
 
       return;
@@ -493,10 +490,14 @@ async function handleWavelengthInteraction(interaction, client) {
 
     await thread.send({
       content: `<@${resetGame.clueGiverId}> — you're the **Clue Giver** this round! Click below to open your private panel.`,
-      components: [{
-        type: 1,
-        components: [{ type: 2, style: 1, label: 'Open Clue Giver Panel', custom_id: 'wl_open_cg_panel' }],
-      }],
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('wl_open_cg_panel')
+            .setLabel('Open Clue Giver Panel')
+            .setStyle(ButtonStyle.Primary),
+        ),
+      ],
     }).catch(() => {});
 
     return;

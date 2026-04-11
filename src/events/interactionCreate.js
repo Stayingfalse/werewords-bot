@@ -88,7 +88,18 @@ module.exports = {
       // ── Dispatch Wavelength modal ───────────────────────────────────────────
       if (modalId === 'wl_clue_modal') {
         const { handleWavelengthInteraction } = require('../game/wavelength/interactionHandler');
-        return handleWavelengthInteraction(interaction, client);
+        try {
+          return await handleWavelengthInteraction(interaction, client);
+        } catch (error) {
+          console.error('[Wavelength modal error]', error);
+          const payload = { content: '❌ Something went wrong — please try again.', flags: MessageFlags.Ephemeral };
+          if (interaction.replied || interaction.deferred) {
+            await interaction.followUp(payload).catch(() => {});
+          } else {
+            await interaction.reply(payload).catch(() => {});
+          }
+        }
+        return;
       }
 
       if (modalId === 'ww_word_modal') {
@@ -144,7 +155,18 @@ module.exports = {
     // ── Dispatch Wavelength interactions ─────────────────────────────────────
     if (customId.startsWith('wl_')) {
       const { handleWavelengthInteraction } = require('../game/wavelength/interactionHandler');
-      return handleWavelengthInteraction(interaction, client);
+      try {
+        return await handleWavelengthInteraction(interaction, client);
+      } catch (error) {
+        console.error('[Wavelength button error]', error);
+        const payload = { content: '❌ Something went wrong — please try again.', flags: MessageFlags.Ephemeral };
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp(payload).catch(() => {});
+        } else {
+          await interaction.reply(payload).catch(() => {});
+        }
+      }
+      return;
     }
 
     // Ignore buttons that don't belong to this bot.
