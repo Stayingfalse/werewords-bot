@@ -236,12 +236,13 @@ module.exports = {
             game.boardMessageId = boardMsg.id;
           }
 
-          // Start the 4-minute countdown (ticks every 30 s).
+          // Tick every second. Discord embed updates happen less often to stay
+          // within rate limits: every 30 s with plenty of time left, every 10 s
+          // inside the last minute, and every 5 s inside the last 30 seconds.
           game.timerInterval = setInterval(async () => {
-            // Bail out if the game ended early via a guess accept.
             if (game.phase !== 'playing') return;
 
-            game.timeLeft -= 30;
+            game.timeLeft--;
 
             if (game.timeLeft <= 0) {
               game.timeLeft = 0;
@@ -249,8 +250,11 @@ module.exports = {
               return;
             }
 
-            // Refresh the board embed with the updated countdown.
-            if (game.boardMessageId) {
+            const updateEvery = game.timeLeft > 60 ? 30
+                              : game.timeLeft > 30 ? 10
+                              : 5;
+
+            if (game.timeLeft % updateEvery === 0 && game.boardMessageId) {
               const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
               if (bMsg) {
                 await bMsg.edit({
@@ -259,7 +263,7 @@ module.exports = {
                 }).catch(() => {});
               }
             }
-          }, 30_000);
+          }, 1_000);
         }
       }
 
