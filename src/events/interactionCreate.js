@@ -239,6 +239,11 @@ module.exports = {
           // Tick every second. Discord embed updates happen less often to stay
           // within rate limits: every 30 s with plenty of time left, every 10 s
           // inside the last minute, and every 5 s inside the last 30 seconds.
+          //
+          // boardRefreshing prevents concurrent edits from piling up if a
+          // previous edit is still awaiting a rate-limit bucket reset.
+          let boardRefreshing = false;
+
           game.timerInterval = setInterval(async () => {
             if (game.phase !== 'playing') return;
 
@@ -254,13 +259,22 @@ module.exports = {
                               : game.timeLeft > 30 ? 10
                               : 5;
 
-            if (game.timeLeft % updateEvery === 0 && game.boardMessageId) {
-              const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
-              if (bMsg) {
-                await bMsg.edit({
-                  embeds: [buildBoardEmbed(game)],
-                  components: buildMayorActionComponents(game.tokens),
-                }).catch(() => {});
+            if (game.timeLeft % updateEvery === 0 && game.boardMessageId && !boardRefreshing) {
+              boardRefreshing = true;
+              try {
+                const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
+                if (bMsg) {
+                  await bMsg.edit({
+                    embeds: [buildBoardEmbed(game)],
+                    components: buildMayorActionComponents(game.tokens),
+                  }).catch(err => {
+                    if (err?.status === 429) {
+                      console.warn(`[Board] Rate limited editing board (thread ${game.threadId}, ${game.timeLeft}s left) — skipping tick`);
+                    }
+                  });
+                }
+              } finally {
+                boardRefreshing = false;
               }
             }
           }, 1_000);
