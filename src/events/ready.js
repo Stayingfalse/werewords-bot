@@ -35,5 +35,13 @@ module.exports = {
     } catch (err) {
       console.error('[Restore] Error during game restore:', err);
     }
+
+    // ── Birthday announcements ──────────────────────────────────────────────
+    try {
+      client.birthdayManager.start(client);
+      console.log('[BirthdayManager] Daily birthday check scheduled.');
+    } catch (err) {
+      console.error('[BirthdayManager] Failed to start:', err);
+    }
   },
 };

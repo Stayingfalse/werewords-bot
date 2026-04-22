@@ -84,6 +84,28 @@ db.exec(`
     synergy_bonuses    INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (guild_id, user_id)
   );
+
+  CREATE TABLE IF NOT EXISTS birthdays (
+    guild_id     TEXT NOT NULL,
+    user_id      TEXT NOT NULL,
+    birth_day    INTEGER NOT NULL,
+    birth_month  INTEGER NOT NULL,
+    birth_year   INTEGER,
+    PRIMARY KEY (guild_id, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS birthday_announcements (
+    guild_id      TEXT NOT NULL,
+    user_id       TEXT NOT NULL,
+    announced_on  TEXT NOT NULL,
+    PRIMARY KEY (guild_id, user_id, announced_on)
+  );
+
+  CREATE TABLE IF NOT EXISTS birthday_settings (
+    guild_id    TEXT PRIMARY KEY,
+    channel_id  TEXT,
+    enabled     INTEGER NOT NULL DEFAULT 0
+  );
 `);
 
 // ── One-time migration: stats.json → werewords_player_stats ───────────────────

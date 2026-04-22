@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const GameManager = require('./game/GameManager');
 const WavelengthManager = require('./game/WavelengthManager');
+const BirthdayManager = require('./game/BirthdayManager');
 
 const client = new Client({
   intents: [
@@ -21,6 +22,7 @@ const client = new Client({
 client.commands = new Collection();
 client.gameManager = new GameManager();
 client.wavelengthManager = new WavelengthManager();
+client.birthdayManager = new BirthdayManager();
 
 // ── Load commands ──────────────────────────────────────────────────────────────
 const commandsPath = path.join(__dirname, 'commands');
