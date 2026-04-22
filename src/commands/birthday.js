@@ -8,6 +8,7 @@
  *   get [user]               – View a birthday. Admins can target any user.
  *   delete [user]            – Remove a birthday. Admins can target any user.
  *   upcoming                 – Show the next 3 upcoming birthdays in this server.
+ *   list                     – Show all birthdays in this server sorted by month/day.
  *   start [channel]          – Admin: enable announcements (optionally set channel).
  *   stop                     – Admin: disable announcements.
  *   setchannel <channel>     – Admin: set/change the announcement channel.
@@ -190,6 +191,13 @@ module.exports = {
             .setDescription('The channel to use for birthday announcements')
             .setRequired(true),
         ),
+    )
+
+    // /birthday list
+    .addSubcommand(sub =>
+      sub
+        .setName('list')
+        .setDescription('Show all birthdays registered in this server, sorted by month and day.'),
     ),
 
   // ── Handler ──────────────────────────────────────────────────────────────────
@@ -380,6 +388,45 @@ module.exports = {
         content: `✅ Birthday announcement channel set to <#${channel.id}>.`,
         flags: MessageFlags.Ephemeral,
       });
+    }
+
+    // ── /birthday list ───────────────────────────────────────────────────────
+    if (sub === 'list') {
+      const all = repo.getAllBirthdays(guildId);
+
+      if (all.length === 0) {
+        return interaction.reply({
+          content: 'ℹ️ No birthdays have been set in this server yet.',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      // Sort by month first, then by day within the month.
+      const sorted = [...all].sort((a, b) =>
+        a.birth_month !== b.birth_month
+          ? a.birth_month - b.birth_month
+          : a.birth_day - b.birth_day,
+      );
+
+      // Build display lines; cap at 50 to stay well within Discord's 4096-char limit.
+      const MAX_LINES = 50;
+      const lines = sorted.slice(0, MAX_LINES).map(row => {
+        const dd  = String(row.birth_day).padStart(2, '0');
+        const mon = MONTH_NAMES[row.birth_month];
+        return `🎂 <@${row.user_id}> — **${dd} ${mon}**`;
+      });
+
+      if (sorted.length > MAX_LINES) {
+        lines.push(`*… and ${sorted.length - MAX_LINES} more*`);
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle('🎂 All Birthdays')
+        .setDescription(lines.join('\n'))
+        .setColor(0xF1C40F)
+        .setFooter({ text: `${all.length} birthday${all.length === 1 ? '' : 's'} registered in this server` });
+
+      return interaction.reply({ embeds: [embed] });
     }
   },
 };
