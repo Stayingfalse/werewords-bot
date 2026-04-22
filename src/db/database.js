@@ -168,4 +168,66 @@ if (fs.existsSync(STATS_JSON) && !fs.existsSync(STATS_JSON_MIGRATED)) {
   }
 }
 
+// ── One-time migration: yagpdb-birthdays.json → birthdays ─────────────────────
+//
+// Imports birthday data exported from a YAGPDB custom-command database.
+// The JSON file contains { "userId": "ISO-8601-date-string", ... }.
+// YAGPDB stores dates as UTC midnight, so we parse each value as a UTC Date
+// and extract the UTC day/month/year.
+//
+// Requires GUILD_ID to be set in the environment (.env).
+// Once the migration runs successfully the source file is renamed to
+// yagpdb-birthdays.json.migrated so it is never re-applied.
+
+const YAGPDB_JSON         = path.join(__dirname, '../../data/yagpdb-birthdays.json');
+const YAGPDB_JSON_MIGRATED = YAGPDB_JSON + '.migrated';
+
+if (fs.existsSync(YAGPDB_JSON) && !fs.existsSync(YAGPDB_JSON_MIGRATED)) {
+  const guildId = process.env.GUILD_ID;
+  if (!guildId) {
+    console.warn(
+      '[DB] yagpdb-birthdays.json found but GUILD_ID is not set in the environment — ' +
+      'skipping birthday migration. Add GUILD_ID to your .env file and restart.',
+    );
+  } else {
+    try {
+      const raw = JSON.parse(fs.readFileSync(YAGPDB_JSON, 'utf8'));
+
+      const upsertBirthday = db.prepare(`
+        INSERT INTO birthdays (guild_id, user_id, birth_day, birth_month, birth_year)
+        VALUES (@guild_id, @user_id, @birth_day, @birth_month, @birth_year)
+        ON CONFLICT(guild_id, user_id) DO NOTHING
+      `);
+
+      const migrateYagpdb = db.transaction(() => {
+        let count = 0;
+        for (const [userId, isoDate] of Object.entries(raw)) {
+          // Parse as a UTC Date — YAGPDB persists dates at UTC midnight regardless
+          // of the timezone suffix in the serialised string.
+          const d = new Date(isoDate);
+          if (isNaN(d.getTime())) {
+            console.warn(`[DB] YAGPDB migration: skipping user ${userId} — invalid date "${isoDate}"`);
+            continue;
+          }
+          upsertBirthday.run({
+            guild_id:    guildId,
+            user_id:     userId,
+            birth_day:   d.getUTCDate(),
+            birth_month: d.getUTCMonth() + 1, // getUTCMonth() is 0-based
+            birth_year:  d.getUTCFullYear(),
+          });
+          count++;
+        }
+        return count;
+      });
+
+      const imported = migrateYagpdb();
+      fs.renameSync(YAGPDB_JSON, YAGPDB_JSON_MIGRATED);
+      console.log(`[DB] Migrated yagpdb-birthdays.json → birthdays (${imported} record(s) for guild ${guildId})`);
+    } catch (err) {
+      console.error('[DB] yagpdb-birthdays.json migration failed — skipping:', err.message);
+    }
+  }
+}
+
 module.exports = db;
