@@ -12,6 +12,7 @@
  *   start [channel]          – Admin: enable announcements (optionally set channel).
  *   stop                     – Admin: disable announcements.
  *   setchannel <channel>     – Admin: set/change the announcement channel.
+ *   resend                   – Admin: clear today's dedup and re-send today's announcements.
  */
 
 const {
@@ -198,6 +199,13 @@ module.exports = {
       sub
         .setName('list')
         .setDescription('Show all birthdays registered in this server, sorted by month and day.'),
+    )
+
+    // /birthday resend
+    .addSubcommand(sub =>
+      sub
+        .setName('resend')
+        .setDescription('(Admin) Re-send today\'s birthday announcements (clears today\'s dedup first).'),
     ),
 
   // ── Handler ──────────────────────────────────────────────────────────────────
@@ -427,6 +435,48 @@ module.exports = {
         .setFooter({ text: `${all.length} birthday${all.length === 1 ? '' : 's'} registered in this server` });
 
       return interaction.reply({ embeds: [embed] });
+    }
+
+    // ── /birthday resend ─────────────────────────────────────────────────────
+    if (sub === 'resend') {
+      if (!isAdmin) {
+        return interaction.reply({
+          content: '❌ You need the **Manage Server** permission to use this command.',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      const settings = repo.getSettings(guildId);
+      if (!settings || !settings.enabled || !settings.channel_id) {
+        return interaction.reply({
+          content:
+            '❌ Birthday announcements are not enabled in this server. ' +
+            'Use `/birthday start` to enable them first.',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      // Defer because we'll be making Discord API calls (member fetches + sends).
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+      // Wipe today's dedup records for this guild so everyone gets re-announced.
+      const dateKey = new Date().toISOString().slice(0, 10);
+      repo.clearTodayAnnouncements(guildId, dateKey);
+
+      const result = await interaction.client.birthdayManager.runForGuild(interaction.guild);
+
+      if (result.total === 0) {
+        return interaction.editReply({ content: 'ℹ️ No birthdays today in this server.' });
+      }
+
+      return interaction.editReply({
+        content:
+          `✅ Sent **${result.sent}** birthday announcement${result.sent === 1 ? '' : 's'}` +
+          ` in <#${result.channelId}>.` +
+          (result.total > result.sent
+            ? ` (${result.total - result.sent} member${result.total - result.sent === 1 ? '' : 's'} not found in server)`
+            : ''),
+      });
     }
   },
 };

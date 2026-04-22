@@ -211,7 +211,7 @@ if (fs.existsSync(YAGPDB_JSON) && !fs.existsSync(YAGPDB_JSON_MIGRATED)) {
             console.warn(`[DB] YAGPDB migration: skipping user ${userId} — invalid date "${isoDate}"`);
             continue;
           }
-          const [, yearStr, monthStr, dayStr] = match;
+          const [_fullMatch, yearStr, monthStr, dayStr] = match;
           upsertBirthday.run({
             guild_id:    guildId,
             user_id:     userId,

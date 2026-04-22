@@ -52,6 +52,10 @@ const stmtPruneAnnouncements = db.prepare(`
   DELETE FROM birthday_announcements WHERE announced_on < ?
 `);
 
+const stmtClearTodayAnnouncements = db.prepare(`
+  DELETE FROM birthday_announcements WHERE guild_id = ? AND announced_on = ?
+`);
+
 const stmtGetSettings = db.prepare(`
   SELECT channel_id, enabled FROM birthday_settings WHERE guild_id = ?
 `);
@@ -153,6 +157,16 @@ function pruneAnnouncements(beforeDateKey) {
 }
 
 /**
+ * Remove all announcement dedup records for a guild on a specific date.
+ * This allows those users to be re-announced on the next run.
+ * @param {string} guildId
+ * @param {string} dateKey  ISO date string "YYYY-MM-DD"
+ */
+function clearTodayAnnouncements(guildId, dateKey) {
+  stmtClearTodayAnnouncements.run(guildId, dateKey);
+}
+
+/**
  * Get birthday settings for a guild.
  * @returns {{ channel_id: string|null, enabled: boolean }|null}
  */
@@ -189,6 +203,7 @@ module.exports = {
   wasAnnounced,
   markAnnounced,
   pruneAnnouncements,
+  clearTodayAnnouncements,
   getSettings,
   setEnabled,
   setChannel,

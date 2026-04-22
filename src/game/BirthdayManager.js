@@ -111,39 +111,64 @@ class BirthdayManager {
   async _runAnnouncements() {
     if (!this._client) return;
 
-    const now      = new Date();
-    const dateKey  = todayKey(now);
-    const day      = now.getUTCDate();
-    const month    = now.getUTCMonth() + 1; // 1-based
+    const now = new Date();
 
     // Prune old dedup records (keep last 2 days to be safe)
     const pruneBeforeDate = new Date(now);
     pruneBeforeDate.setUTCDate(pruneBeforeDate.getUTCDate() - 2);
     repo.pruneAnnouncements(todayKey(pruneBeforeDate));
 
-    for (const [guildId, guild] of this._client.guilds.cache) {
-      const settings = repo.getSettings(guildId);
-      if (!settings || !settings.enabled || !settings.channel_id) continue;
-
-      const channel = this._client.channels.cache.get(settings.channel_id);
-      if (!channel) continue;
-
-      const userIds = repo.getTodaysBirthdays(guildId, day, month);
-      for (const userId of userIds) {
-        if (repo.wasAnnounced(guildId, userId, dateKey)) continue;
-
-        // Verify the member is still in the guild.
-        const member = await guild.members.fetch(userId).catch(() => null);
-        if (!member) continue;
-
-        const message = randomMessage(`<@${userId}>`);
-        await channel.send(message).catch(err =>
-          console.error(`[BirthdayManager] Failed to send message in guild ${guildId}:`, err),
-        );
-
-        repo.markAnnounced(guildId, userId, dateKey);
-      }
+    for (const [, guild] of this._client.guilds.cache) {
+      await this.runForGuild(guild).catch(err =>
+        console.error(`[BirthdayManager] Error processing guild ${guild.id}:`, err),
+      );
     }
+  }
+
+  /**
+   * Send any unannounced birthday messages for a single guild.
+   * Respects the existing dedup records — already-announced users are skipped.
+   *
+   * @param {import('discord.js').Guild} guild
+   * @returns {Promise<{ sent: number, total: number, channelId: string|null }>}
+   */
+  async runForGuild(guild) {
+    if (!this._client) return { sent: 0, total: 0, channelId: null };
+
+    const guildId  = guild.id;
+    const settings = repo.getSettings(guildId);
+    if (!settings || !settings.enabled || !settings.channel_id) {
+      return { sent: 0, total: 0, channelId: null };
+    }
+
+    const channel = this._client.channels.cache.get(settings.channel_id);
+    if (!channel) return { sent: 0, total: 0, channelId: settings.channel_id };
+
+    const now     = new Date();
+    const dateKey = todayKey(now);
+    const day     = now.getUTCDate();
+    const month   = now.getUTCMonth() + 1; // 1-based
+
+    const userIds = repo.getTodaysBirthdays(guildId, day, month);
+    let sent = 0;
+
+    for (const userId of userIds) {
+      if (repo.wasAnnounced(guildId, userId, dateKey)) continue;
+
+      // Verify the member is still in the guild.
+      const member = await guild.members.fetch(userId).catch(() => null);
+      if (!member) continue;
+
+      const message = randomMessage(`<@${userId}>`);
+      await channel.send(message).catch(err =>
+        console.error(`[BirthdayManager] Failed to send message in guild ${guildId}:`, err),
+      );
+
+      repo.markAnnounced(guildId, userId, dateKey);
+      sent++;
+    }
+
+    return { sent, total: userIds.length, channelId: settings.channel_id };
   }
 }
 
