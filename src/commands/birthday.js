@@ -5,12 +5,15 @@
  *
  * Subcommands:
  *   set <date> [user]        – Set a birthday (dd/mm[/yyyy]). Admins can target any user.
- *   get [user]               – View a birthday. Admins can target any user.
+ *   list [user] [all]        – View birthdays:
+ *                               • list <user>     → show that user's birthday (admins can look up anyone)
+ *                               • list            → show next 3 upcoming birthdays
+ *                               • list all:True   → show all birthdays sorted by month/day
  *   delete [user]            – Remove a birthday. Admins can target any user.
- *   upcoming                 – Show the next 3 upcoming birthdays in this server.
  *   start [channel]          – Admin: enable announcements (optionally set channel).
  *   stop                     – Admin: disable announcements.
  *   setchannel <channel>     – Admin: set/change the announcement channel.
+ *   resend                   – Admin: clear today's dedup and re-send today's announcements.
  */
 
 const {
@@ -129,15 +132,20 @@ module.exports = {
         ),
     )
 
-    // /birthday get [user]
+    // /birthday list [user] [all]
     .addSubcommand(sub =>
       sub
-        .setName('get')
-        .setDescription('Check a birthday. Admins can look up any user.')
+        .setName('list')
+        .setDescription('List birthdays: a user\'s birthday, upcoming birthdays, or all birthdays.')
         .addUserOption(opt =>
           opt
             .setName('user')
-            .setDescription('(Admin only) The user to look up'),
+            .setDescription('Show this user\'s birthday. Admins can look up anyone.'),
+        )
+        .addBooleanOption(opt =>
+          opt
+            .setName('all')
+            .setDescription('Show all birthdays in this server sorted by month/day.'),
         ),
     )
 
@@ -151,13 +159,6 @@ module.exports = {
             .setName('user')
             .setDescription('(Admin only) The user whose birthday to remove'),
         ),
-    )
-
-    // /birthday upcoming
-    .addSubcommand(sub =>
-      sub
-        .setName('upcoming')
-        .setDescription('Show the next 3 upcoming birthdays in this server'),
     )
 
     // /birthday start [channel]
@@ -190,6 +191,13 @@ module.exports = {
             .setDescription('The channel to use for birthday announcements')
             .setRequired(true),
         ),
+    )
+
+    // /birthday resend
+    .addSubcommand(sub =>
+      sub
+        .setName('resend')
+        .setDescription('(Admin) Re-send today\'s birthday announcements (clears today\'s dedup first).'),
     ),
 
   // ── Handler ──────────────────────────────────────────────────────────────────
@@ -235,32 +243,99 @@ module.exports = {
       });
     }
 
-    // ── /birthday get ────────────────────────────────────────────────────────
-    if (sub === 'get') {
-      const targetUser = interaction.options.getUser('user') ?? interaction.user;
+    // ── /birthday list ───────────────────────────────────────────────────────
+    if (sub === 'list') {
+      const targetUser = interaction.options.getUser('user');
+      const showAll    = interaction.options.getBoolean('all') ?? false;
 
-      if (targetUser.id !== interaction.user.id && !isAdmin) {
+      // — list <user>: show a specific user's birthday
+      if (targetUser) {
+        if (targetUser.id !== interaction.user.id && !isAdmin) {
+          return interaction.reply({
+            content: '❌ You can only check your **own** birthday.',
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+
+        const row = repo.getBirthday(guildId, targetUser.id);
+        if (!row) {
+          const whose = targetUser.id === interaction.user.id ? 'You don\'t' : `${targetUser.username} doesn't`;
+          return interaction.reply({
+            content: `ℹ️ ${whose} have a birthday set in this server.`,
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+
+        const formatted = formatBirthday(row);
+        const whose = targetUser.id === interaction.user.id ? 'Your' : `${targetUser.username}'s`;
         return interaction.reply({
-          content: '❌ You can only check your **own** birthday.',
+          content: `🎂 ${whose} birthday is **${formatted}**.`,
           flags: MessageFlags.Ephemeral,
         });
       }
 
-      const row = repo.getBirthday(guildId, targetUser.id);
-      if (!row) {
-        const whose = targetUser.id === interaction.user.id ? 'You don\'t' : `${targetUser.username} doesn't`;
+      // — list all:true: show every birthday sorted by month/day
+      if (showAll) {
+        const all = repo.getAllBirthdays(guildId);
+
+        if (all.length === 0) {
+          return interaction.reply({
+            content: 'ℹ️ No birthdays have been set in this server yet.',
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+
+        const sorted = [...all].sort((a, b) =>
+          a.birth_month !== b.birth_month
+            ? a.birth_month - b.birth_month
+            : a.birth_day - b.birth_day,
+        );
+
+        const MAX_LINES = 50;
+        const lines = sorted.slice(0, MAX_LINES).map(row => {
+          const dd  = String(row.birth_day).padStart(2, '0');
+          const mon = MONTH_NAMES[row.birth_month];
+          return `🎂 <@${row.user_id}> — **${dd} ${mon}**`;
+        });
+
+        if (sorted.length > MAX_LINES) {
+          lines.push(`*… and ${sorted.length - MAX_LINES} more*`);
+        }
+
+        const embed = new EmbedBuilder()
+          .setTitle('🎂 All Birthdays')
+          .setDescription(lines.join('\n'))
+          .setColor(0xF1C40F)
+          .setFooter({ text: `${all.length} birthday${all.length === 1 ? '' : 's'} registered in this server` });
+
+        return interaction.reply({ embeds: [embed] });
+      }
+
+      // — list (no args): show next 3 upcoming birthdays
+      const all = repo.getAllBirthdays(guildId);
+      const upcoming = getUpcoming(all, 3);
+
+      if (upcoming.length === 0) {
         return interaction.reply({
-          content: `ℹ️ ${whose} have a birthday set in this server.`,
+          content: 'ℹ️ No upcoming birthdays found in this server.',
           flags: MessageFlags.Ephemeral,
         });
       }
 
-      const formatted = formatBirthday(row);
-      const whose = targetUser.id === interaction.user.id ? 'Your' : `${targetUser.username}'s`;
-      return interaction.reply({
-        content: `🎂 ${whose} birthday is **${formatted}**.`,
-        flags: MessageFlags.Ephemeral,
+      const lines = upcoming.map(entry => {
+        const dd  = String(entry.day).padStart(2, '0');
+        const mon = MONTH_NAMES[entry.month];
+        const days = entry.daysAway === 1 ? 'tomorrow' : `in ${entry.daysAway} days`;
+        return `🎂 <@${entry.userId}> — **${dd} ${mon}** (${days})`;
       });
+
+      const embed = new EmbedBuilder()
+        .setTitle('📅 Upcoming Birthdays')
+        .setDescription(lines.join('\n'))
+        .setColor(0xF1C40F)
+        .setFooter({ text: 'Next 3 birthdays in this server' });
+
+      return interaction.reply({ embeds: [embed] });
     }
 
     // ── /birthday delete ─────────────────────────────────────────────────────
@@ -288,34 +363,6 @@ module.exports = {
         content: `🗑️ ${whose} birthday has been removed.`,
         flags: MessageFlags.Ephemeral,
       });
-    }
-
-    // ── /birthday upcoming ───────────────────────────────────────────────────
-    if (sub === 'upcoming') {
-      const all = repo.getAllBirthdays(guildId);
-      const upcoming = getUpcoming(all, 3);
-
-      if (upcoming.length === 0) {
-        return interaction.reply({
-          content: 'ℹ️ No upcoming birthdays found in this server.',
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
-      const lines = upcoming.map(entry => {
-        const dd = String(entry.day).padStart(2, '0');
-        const mon = MONTH_NAMES[entry.month];
-        const days = entry.daysAway === 1 ? 'tomorrow' : `in ${entry.daysAway} days`;
-        return `🎂 <@${entry.userId}> — **${dd} ${mon}** (${days})`;
-      });
-
-      const embed = new EmbedBuilder()
-        .setTitle('📅 Upcoming Birthdays')
-        .setDescription(lines.join('\n'))
-        .setColor(0xF1C40F)
-        .setFooter({ text: 'Next 3 birthdays in this server' });
-
-      return interaction.reply({ embeds: [embed] });
     }
 
     // ── /birthday start ──────────────────────────────────────────────────────
@@ -379,6 +426,48 @@ module.exports = {
       return interaction.reply({
         content: `✅ Birthday announcement channel set to <#${channel.id}>.`,
         flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    // ── /birthday resend ─────────────────────────────────────────────────────
+    if (sub === 'resend') {
+      if (!isAdmin) {
+        return interaction.reply({
+          content: '❌ You need the **Manage Server** permission to use this command.',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      const settings = repo.getSettings(guildId);
+      if (!settings || !settings.enabled || !settings.channel_id) {
+        return interaction.reply({
+          content:
+            '❌ Birthday announcements are not enabled in this server. ' +
+            'Use `/birthday start` to enable them first.',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      // Defer because we'll be making Discord API calls (member fetches + sends).
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+      // Wipe today's dedup records for this guild so everyone gets re-announced.
+      const dateKey = new Date().toISOString().slice(0, 10);
+      repo.clearTodayAnnouncements(guildId, dateKey);
+
+      const result = await interaction.client.birthdayManager.runForGuild(interaction.guild);
+
+      if (result.total === 0) {
+        return interaction.editReply({ content: 'ℹ️ No birthdays today in this server.' });
+      }
+
+      return interaction.editReply({
+        content:
+          `✅ Sent **${result.sent}** birthday announcement${result.sent === 1 ? '' : 's'}` +
+          ` in <#${result.channelId}>.` +
+          (result.total > result.sent
+            ? ` (${result.total - result.sent} member${result.total - result.sent === 1 ? '' : 's'} not found in server)`
+            : ''),
       });
     }
   },

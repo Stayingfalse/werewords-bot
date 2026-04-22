@@ -202,19 +202,22 @@ if (fs.existsSync(YAGPDB_JSON) && !fs.existsSync(YAGPDB_JSON_MIGRATED)) {
       const migrateYagpdb = db.transaction(() => {
         let count = 0;
         for (const [userId, isoDate] of Object.entries(raw)) {
-          // Parse as a UTC Date — YAGPDB persists dates at UTC midnight regardless
-          // of the timezone suffix in the serialised string.
-          const d = new Date(isoDate);
-          if (isNaN(d.getTime())) {
+          // Extract the calendar date (YYYY-MM-DD) directly from the ISO string so
+          // we are never affected by timezone offsets embedded in the value.
+          // YAGPDB persists the user's chosen calendar date; we want that date as-is,
+          // not its UTC equivalent which can be one day off when a timezone offset is present.
+          const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(isoDate);
+          if (!match) {
             console.warn(`[DB] YAGPDB migration: skipping user ${userId} — invalid date "${isoDate}"`);
             continue;
           }
+          const [_fullMatch, yearStr, monthStr, dayStr] = match;
           upsertBirthday.run({
             guild_id:    guildId,
             user_id:     userId,
-            birth_day:   d.getUTCDate(),
-            birth_month: d.getUTCMonth() + 1, // getUTCMonth() is 0-based
-            birth_year:  d.getUTCFullYear(),
+            birth_day:   parseInt(dayStr, 10),
+            birth_month: parseInt(monthStr, 10),
+            birth_year:  parseInt(yearStr, 10),
           });
           count++;
         }
