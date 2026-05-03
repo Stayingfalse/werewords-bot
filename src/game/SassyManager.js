@@ -48,12 +48,11 @@ const CHANNEL_CONTEXTS = [
           'without hitting the assassin.',
   },
   {
-    keywords: ['boardgame', 'board game', 'board-game', 'werewords', 'wavelength'],
-    note: 'This channel is in the board-games area. Games played here include ' +
-          'Werewords (a social deduction word game with Mayor, Werewolf, Seer, ' +
-          'and Villager roles where the village must guess the secret word before ' +
-          'time runs out), Wavelength (a psychic party game of clues and spectrums), ' +
-          'and other tabletop favourites.',
+    keywords: ['boardgame', 'board game', 'board-game', 'tabletop', 'table top', 'table-top', 'games'],
+    note: 'This channel is in the board-games area, where people discuss and play ' +
+          'all kinds of tabletop and board games — from strategy and party games to ' +
+          'social deduction titles. Expect talk of rules, scores, expansions, game ' +
+          'nights, and the eternal debate over which game to play next.',
   },
 ];
 
