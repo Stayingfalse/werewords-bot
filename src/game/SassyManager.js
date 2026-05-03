@@ -9,6 +9,7 @@
 'use strict';
 
 const { GoogleGenAI } = require('@google/genai');
+const { ChannelType } = require('discord.js');
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -17,12 +18,43 @@ const MAX_HISTORY_TURNS  = parseInt(process.env.MAX_HISTORY_TURNS  || '20', 10);
 const COOLDOWN_MS        = parseInt(process.env.COOLDOWN_MS        || '2000', 10);
 const INTERJECT_COOLDOWN = parseInt(process.env.INTERJECT_COOLDOWN || '180000', 10); // 3 min
 const ACTIVITY_WINDOW_MS = parseInt(process.env.ACTIVITY_WINDOW_MS || '60000', 10);  // 60 sec
+const HISTORY_TTL_MS     = parseInt(process.env.HISTORY_TTL_MS     || '86400000', 10); // 24 h
+
+const MS_PER_HOUR = 3_600_000;
 
 // Optional: comma-separated channel IDs to restrict interjections.
 // Leave unset to allow interjections everywhere.
 const INTERJECT_CHANNELS = process.env.INTERJECT_CHANNELS
   ? new Set(process.env.INTERJECT_CHANNELS.split(',').map(s => s.trim()))
   : null;
+
+// ─── Channel-context knowledge base ─────────────────────────────────────────
+// Maps lowercase keywords found in a channel's category or channel name to a
+// descriptive sentence that is injected into the Gemini system prompt so the
+// AI can make contextually relevant comments.
+
+const CHANNEL_CONTEXTS = [
+  {
+    keywords: ['clocktower', 'clock tower', 'botc'],
+    note: 'This channel is part of a Blood on the Clocktower community. ' +
+          'Players here enjoy the social deduction game Blood on the Clocktower, ' +
+          'featuring roles like the Storyteller, townsfolk, outsiders, minions, ' +
+          'and demons. Bluffing, deduction, and late-night betrayal are the norm.',
+  },
+  {
+    keywords: ['codenames'],
+    note: 'This channel is for Codenames, the word-guessing spy game where ' +
+          'spymasters give one-word clues to lead their team to the right cards ' +
+          'without hitting the assassin.',
+  },
+  {
+    keywords: ['boardgame', 'board game', 'board-game', 'tabletop', 'table top', 'table-top', 'games'],
+    note: 'This channel is in the board-games area, where people discuss and play ' +
+          'all kinds of tabletop and board games — from strategy and party games to ' +
+          'social deduction titles. Expect talk of rules, scores, expansions, game ' +
+          'nights, and the eternal debate over which game to play next.',
+  },
+];
 
 // ─── Activity tiers ──────────────────────────────────────────────────────────
 // Each tier: { min (messages in window), chance (0-1), context (messages fed to AI) }
@@ -89,19 +121,29 @@ class SassyManager {
     // Per-channel recent messages for interjection context
     this._recentMessages = new Map();
 
+    // Per-channel last activity timestamp (used by cleanup)
+    this._lastActivity = new Map();
+
     console.log(`[SassyManager] Initialised — model: ${GEMINI_MODEL}`);
     console.log(`[SassyManager] Interjection cooldown: ${INTERJECT_COOLDOWN / 1000}s | Activity window: ${ACTIVITY_WINDOW_MS / 1000}s`);
+    console.log(`[SassyManager] History TTL: ${HISTORY_TTL_MS / MS_PER_HOUR}h`);
     if (INTERJECT_CHANNELS) {
       console.log(`[SassyManager] Interjecting in channels: ${[...INTERJECT_CHANNELS].join(', ')}`);
     } else {
       console.log('[SassyManager] Interjecting in all channels');
     }
+
+    this._startCleanupTimer();
   }
 
   // ─── Public entry point ────────────────────────────────────────────────────
 
-  /** Called for every non-bot guild message. */
-  async handleMessage(message) {
+  /**
+   * Called for every non-bot guild message.
+   * @param {import('discord.js').Message} message
+   * @param {{ suppressInterjections?: boolean }} [options]
+   */
+  async handleMessage(message, options = {}) {
     const channelId   = message.channel.id;
     const content     = message.content.trim();
     const isMentioned = message.mentions.has(message.client.user);
@@ -118,6 +160,10 @@ class SassyManager {
     this._recordActivity(channelId);
     this._storeRecentMessage(channelId, message.author.username, content);
 
+    // Derive channel context once for both paths
+    const { channelName, categoryName } = this._getChannelContext(message);
+    const channelContext = this._buildContextNote(channelName, categoryName);
+
     // ── PATH A: Direct reply (mention or reply-to-bot) ─────────────────────
     if (isMentioned || isReplyToBot) {
       const now = Date.now();
@@ -128,7 +174,7 @@ class SassyManager {
 
       try {
         await message.channel.sendTyping();
-        const reply = await this._getDirectReply(channelId, userMessage);
+        const reply = await this._getDirectReply(channelId, userMessage, channelContext);
         await message.reply(reply);
       } catch (err) {
         console.error('[SassyManager] Direct reply error:', err);
@@ -138,6 +184,9 @@ class SassyManager {
     }
 
     // ── PATH B: Unprompted interjection ────────────────────────────────────
+
+    // Skip if Sassy has been asked to stand down (e.g. active game thread)
+    if (options.suppressInterjections) return;
 
     // Channel allow-list (if configured)
     if (INTERJECT_CHANNELS && !INTERJECT_CHANNELS.has(channelId)) return;
@@ -163,7 +212,7 @@ class SassyManager {
     const contextText = this._buildInterjectionContext(channelId, tier.context);
 
     try {
-      const zinger = await this._getInterjection(contextText);
+      const zinger = await this._getInterjection(contextText, channelContext);
       await message.channel.send(zinger);
     } catch (err) {
       console.error('[SassyManager] Interjection error:', err);
@@ -187,6 +236,7 @@ class SassyManager {
     const timestamps = this._activityWindows.get(channelId) || [];
     timestamps.push(Date.now());
     this._activityWindows.set(channelId, timestamps);
+    this._lastActivity.set(channelId, Date.now());
   }
 
   /** Store a recent message for interjection context, capped at 10. */
@@ -242,13 +292,16 @@ class SassyManager {
   }
 
   /** Call Gemini for a direct reply, maintaining per-channel history. */
-  async _getDirectReply(channelId, userMessage) {
+  async _getDirectReply(channelId, userMessage, channelContext) {
     const history = this._conversationHistory.get(channelId) || [];
+    const systemInstruction = channelContext
+      ? `${SYSTEM_DIRECT}\n\nChannel context: ${channelContext}`
+      : SYSTEM_DIRECT;
 
     const chat = this._ai.chats.create({
       model: GEMINI_MODEL,
       history,
-      config: { systemInstruction: SYSTEM_DIRECT },
+      config: { systemInstruction },
     });
     const response = await chat.sendMessage({ message: userMessage });
     const responseText = response.text ?? '';
@@ -262,14 +315,100 @@ class SassyManager {
   }
 
   /** Call Gemini for an unprompted interjection. */
-  async _getInterjection(contextText) {
+  async _getInterjection(contextText, channelContext) {
+    const systemInstruction = channelContext
+      ? `${SYSTEM_INTERJECT}\n\nChannel context: ${channelContext}`
+      : SYSTEM_INTERJECT;
     const prompt = `Here is the recent conversation:\n\n${contextText}\n\nDrop your one-line reaction.`;
     const result = await this._ai.models.generateContent({
       model: GEMINI_MODEL,
       contents: prompt,
-      config: { systemInstruction: SYSTEM_INTERJECT },
+      config: { systemInstruction },
     });
     return (result.text ?? '').trim();
+  }
+
+  // ─── Channel context helpers ───────────────────────────────────────────────
+
+  /**
+   * Extract the channel name and parent category name from a Discord message.
+   * Works for regular text channels and threads (one level deep).
+   * @param {import('discord.js').Message} message
+   * @returns {{ channelName: string, categoryName: string }}
+   */
+  _getChannelContext(message) {
+    const channel = message.channel;
+    const channelName = channel.name ?? '';
+    let categoryName = '';
+
+    if (channel.parent) {
+      if (channel.parent.type === ChannelType.GuildCategory) {
+        // Regular text channel: parent is the category
+        categoryName = channel.parent.name ?? '';
+      } else if (channel.parent.parent?.type === ChannelType.GuildCategory) {
+        // Thread: parent is a text channel, grandparent is the category
+        categoryName = channel.parent.parent.name ?? '';
+      }
+    }
+
+    return { channelName, categoryName };
+  }
+
+  /**
+   * Map a channel/category name pair to a descriptive context note for the AI.
+   * Returns null if no known context matches.
+   * @param {string} channelName
+   * @param {string} categoryName
+   * @returns {string|null}
+   */
+  _buildContextNote(channelName, categoryName) {
+    const haystack = `${channelName} ${categoryName}`.toLowerCase();
+    for (const { keywords, note } of CHANNEL_CONTEXTS) {
+      if (keywords.some(kw => haystack.includes(kw))) return note;
+    }
+    return null;
+  }
+
+  // ─── Memory cleanup ────────────────────────────────────────────────────────
+
+  /**
+   * Start a periodic timer that evicts per-channel state for channels that have
+   * had no activity in the last HISTORY_TTL_MS milliseconds.  Runs every hour.
+   */
+  _startCleanupTimer() {
+    this._cleanupInterval = setInterval(() => this._evictStaleChannels(), MS_PER_HOUR);
+    // Allow Node.js to exit even if this timer is still pending
+    if (this._cleanupInterval.unref) this._cleanupInterval.unref();
+  }
+
+  /** Stop the cleanup timer and release all per-channel state. */
+  destroy() {
+    if (this._cleanupInterval) {
+      clearInterval(this._cleanupInterval);
+      this._cleanupInterval = null;
+    }
+  }
+
+  /** Remove all per-channel state for channels inactive longer than HISTORY_TTL_MS. */
+  _evictStaleChannels() {
+    const cutoff = Date.now() - HISTORY_TTL_MS;
+    let evicted = 0;
+
+    for (const [channelId, lastSeen] of this._lastActivity) {
+      if (lastSeen < cutoff) {
+        this._conversationHistory.delete(channelId);
+        this._directCooldowns.delete(channelId);
+        this._interjectCooldowns.delete(channelId);
+        this._activityWindows.delete(channelId);
+        this._recentMessages.delete(channelId);
+        this._lastActivity.delete(channelId);
+        evicted++;
+      }
+    }
+
+    if (evicted > 0) {
+      console.log(`[SassyManager] Evicted stale state for ${evicted} channel(s) (TTL ${HISTORY_TTL_MS / MS_PER_HOUR}h).`);
+    }
   }
 }
 

@@ -26,7 +26,11 @@ module.exports = {
 
     // ── SassyBot AI features (opt-in via SASSY_ENABLED=true) ─────────────────
     if (client.sassyManager) {
-      await client.sassyManager.handleMessage(message);
+      // Suppress unprompted interjections while an active game is running in
+      // this thread so Sassy doesn't disrupt gameplay.  Direct mentions/replies
+      // still work normally.
+      const inActiveThread = !!client.gameManager.getGame(message.channel.id);
+      await client.sassyManager.handleMessage(message, { suppressInterjections: inActiveThread });
     }
   },
 };
