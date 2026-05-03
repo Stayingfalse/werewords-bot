@@ -8,7 +8,7 @@
 
 'use strict';
 
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenAI } = require('@google/genai');
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -70,9 +70,8 @@ class SassyManager {
       throw new Error('[SassyManager] GEMINI_API_KEY is required when SASSY_ENABLED=true');
     }
 
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    this._directModel   = genAI.getGenerativeModel({ model: GEMINI_MODEL, systemInstruction: SYSTEM_DIRECT });
-    this._interjectModel= genAI.getGenerativeModel({ model: GEMINI_MODEL, systemInstruction: SYSTEM_INTERJECT });
+    const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    this._ai = genAI;
 
     // Per-channel conversation history for direct replies
     // Map<channelId, Array<{ role: "user"|"model", parts: [{ text }] }>>
@@ -246,9 +245,13 @@ class SassyManager {
   async _getDirectReply(channelId, userMessage) {
     const history = this._conversationHistory.get(channelId) || [];
 
-    const chat = this._directModel.startChat({ history });
-    const result = await chat.sendMessage(userMessage);
-    const responseText = result.response.text();
+    const chat = this._ai.chats.create({
+      model: GEMINI_MODEL,
+      history,
+      config: { systemInstruction: SYSTEM_DIRECT },
+    });
+    const response = await chat.sendMessage({ message: userMessage });
+    const responseText = response.text;
 
     history.push({ role: 'user',  parts: [{ text: userMessage  }] });
     history.push({ role: 'model', parts: [{ text: responseText }] });
@@ -261,8 +264,12 @@ class SassyManager {
   /** Call Gemini for an unprompted interjection. */
   async _getInterjection(contextText) {
     const prompt = `Here is the recent conversation:\n\n${contextText}\n\nDrop your one-line reaction.`;
-    const result = await this._interjectModel.generateContent(prompt);
-    return result.response.text().trim();
+    const result = await this._ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: prompt,
+      config: { systemInstruction: SYSTEM_INTERJECT },
+    });
+    return result.text.trim();
   }
 }
 
