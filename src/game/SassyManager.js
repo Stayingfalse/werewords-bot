@@ -37,7 +37,7 @@ const ACTIVITY_TIERS = [
 // ─── System prompts ──────────────────────────────────────────────────────────
 
 const SYSTEM_DIRECT = `
-You are SassBot, a Discord bot with the energy of someone perpetually 
+You are SassyBot, a Discord bot with the energy of someone perpetually 
 dragged into meetings that could have been emails. You respond helpfully 
 but with maximum passive-aggressive flair, dramatic sighs, and unsolicited 
 opinions on the quality of questions you receive. 
@@ -51,7 +51,7 @@ Rules:
 `.trim();
 
 const SYSTEM_INTERJECT = `
-You are SassBot, a Discord bot who cannot help but commentate on other 
+You are SassyBot, a Discord bot who cannot help but commentate on other 
 people's conversations like a disapproving audience member who wandered in.
 
 Rules:
@@ -154,9 +154,10 @@ class SassyManager {
     const tier = this._resolveTier(channelId);
     const roll = Math.random();
 
-    console.log(`[SassyManager] Interject check — channel ${channelId} | tier ${tier.min}+ msgs | chance ${tier.chance} | roll ${roll.toFixed(3)}`);
-
     if (roll > tier.chance) return;
+
+    // We're going in — log only when interjecting
+    console.log(`[SassyManager] Interjecting in channel ${channelId} | tier ${tier.min}+ msgs | chance ${tier.chance} | roll ${roll.toFixed(3)}`);
 
     this._interjectCooldowns.set(channelId, now);
 
@@ -221,8 +222,17 @@ class SassyManager {
     const words = content.trim().split(/\s+/);
     if (words.length < 4) return false;
     if (/^https?:\/\/\S+$/.test(content.trim())) return false; // URL-only
-    const emojiStripped = content.replace(/[\u{1F300}-\u{1FFFF}]/gu, '').trim();
-    if (emojiStripped.length < 5) return false; // emoji-only
+    // Strip common Unicode emoji ranges and check if meaningful text remains.
+    // Covers: Misc Symbols, Dingbats, Emoticons, Misc Symbols & Pictographs,
+    // Transport & Map, Supplemental Symbols, enclosed alphanumerics, etc.
+    const emojiStripped = content
+      .replace(/[\u2600-\u27BF]/gu, '')       // Misc Symbols, Dingbats
+      .replace(/[\uFE00-\uFE0F]/gu, '')        // Variation selectors
+      .replace(/[\u{1F000}-\u{1FFFF}]/gu, '')  // Emoji & pictographic supplement
+      .replace(/[\u{E0000}-\u{E007F}]/gu, '')  // Tags
+      .replace(/\uFE0F|\u200D/gu, '')          // Variation selector-16, ZWJ
+      .trim();
+    if (emojiStripped.length < 5) return false;
     return true;
   }
 

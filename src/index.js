@@ -32,7 +32,7 @@ if (process.env.SASSY_ENABLED === 'true') {
   try {
     client.sassyManager = new SassyManager();
   } catch (err) {
-    console.error('[SassyManager] Failed to initialise:', err.message);
+    console.error('[SassyManager] Failed to initialise:', err);
   }
 }
 
