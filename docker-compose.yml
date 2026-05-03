@@ -8,5 +8,16 @@ services:
     environment:
       DISCORD_TOKEN: ${DISCORD_TOKEN}
       CLIENT_ID: ${CLIENT_ID}
+      # ── SassyBot AI features (optional) ──────────────────────────────────
+      # Uncomment and configure to enable Gemini-powered sassy replies and
+      # interjections. See .env.example for full documentation.
+      # SASSY_ENABLED: "true"
+      # GEMINI_API_KEY: ${GEMINI_API_KEY}
+      # GEMINI_MODEL: gemini-2.0-flash
+      # MAX_HISTORY_TURNS: "20"
+      # COOLDOWN_MS: "2000"
+      # INTERJECT_COOLDOWN: "180000"
+      # ACTIVITY_WINDOW_MS: "60000"
+      # INTERJECT_CHANNELS: ""
     volumes:
       - ./data:/app/data

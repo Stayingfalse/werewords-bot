@@ -10,12 +10,14 @@ const path = require('path');
 const GameManager = require('./game/GameManager');
 const WavelengthManager = require('./game/WavelengthManager');
 const BirthdayManager = require('./game/BirthdayManager');
+const SassyManager = require('./game/SassyManager');
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent, // Privileged — enable in Discord Dev Portal → Bot → Privileged Gateway Intents
+    GatewayIntentBits.GuildMembers,   // Required by SassyManager when SASSY_ENABLED=true
   ],
 });
 
@@ -23,6 +25,16 @@ client.commands = new Collection();
 client.gameManager = new GameManager();
 client.wavelengthManager = new WavelengthManager();
 client.birthdayManager = new BirthdayManager();
+
+// Conditionally initialise SassyBot AI features.
+// Set SASSY_ENABLED=true and provide a GEMINI_API_KEY to activate.
+if (process.env.SASSY_ENABLED === 'true') {
+  try {
+    client.sassyManager = new SassyManager();
+  } catch (err) {
+    console.error('[SassyManager] Failed to initialise:', err);
+  }
+}
 
 // ── Load commands ──────────────────────────────────────────────────────────────
 const commandsPath = path.join(__dirname, 'commands');

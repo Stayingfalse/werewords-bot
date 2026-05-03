@@ -43,5 +43,12 @@ module.exports = {
     } catch (err) {
       console.error('[BirthdayManager] Failed to start:', err);
     }
+
+    // ── SassyBot status ────────────────────────────────────────────────────
+    if (client.sassyManager) {
+      console.log('[SassyManager] Active — AI sassy replies and interjections enabled.');
+    } else {
+      console.log('[SassyManager] Inactive — set SASSY_ENABLED=true and GEMINI_API_KEY to enable.');
+    }
   },
 };
