@@ -251,7 +251,7 @@ class SassyManager {
       config: { systemInstruction: SYSTEM_DIRECT },
     });
     const response = await chat.sendMessage({ message: userMessage });
-    const responseText = response.text;
+    const responseText = response.text ?? '';
 
     history.push({ role: 'user',  parts: [{ text: userMessage  }] });
     history.push({ role: 'model', parts: [{ text: responseText }] });
@@ -269,7 +269,7 @@ class SassyManager {
       contents: prompt,
       config: { systemInstruction: SYSTEM_INTERJECT },
     });
-    return result.text.trim();
+    return (result.text ?? '').trim();
   }
 }
 
