@@ -255,6 +255,10 @@ class WavelengthManager {
     return selectedId;
   }
 
+  /**
+   * Advance the snake cursor for clue-giver order.
+   * Pattern for players [A,B,C] is A → B → C → C → B → A → A → ...
+   */
   advanceSnakeIndex(idx, dir, playerCount) {
     if (playerCount <= 1) return { idx: 0, dir: 1 };
     if (dir === 1) {

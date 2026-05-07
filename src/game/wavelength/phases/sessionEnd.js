@@ -106,8 +106,7 @@ function buildRematchComponents(disableNextRound = false) {
 
 function computeRoundTotal(roundHistory) {
   let total = 0;
-  for (const [userId, value] of iterateGuesserScores(roundHistory?.scores?.guesserScores)) {
-    if (!userId) continue;
+  for (const [, value] of iterateGuesserScores(roundHistory?.scores?.guesserScores)) {
     total += value?.total ?? 0;
   }
   total += roundHistory?.scores?.clueGiverScore?.total ?? 0;

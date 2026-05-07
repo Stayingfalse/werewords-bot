@@ -111,15 +111,12 @@ db.exec(`
 `);
 
 // ── Lightweight column migrations for existing installs ───────────────────────
-try {
+const wlColumns = new Set(db.prepare('PRAGMA table_info(wavelength_games)').all().map(col => col.name));
+if (!wlColumns.has('session_mode')) {
   db.exec('ALTER TABLE wavelength_games ADD COLUMN session_mode TEXT');
-} catch (err) {
-  if (!err.message.includes('duplicate column name')) throw err;
 }
-try {
+if (!wlColumns.has('clue_order_state')) {
   db.exec('ALTER TABLE wavelength_games ADD COLUMN clue_order_state TEXT');
-} catch (err) {
-  if (!err.message.includes('duplicate column name')) throw err;
 }
 
 // ── One-time migration: stats.json → werewords_player_stats ───────────────────
