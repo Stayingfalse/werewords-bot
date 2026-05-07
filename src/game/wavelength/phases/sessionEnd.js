@@ -45,6 +45,7 @@ function buildSessionSummaryEmbed(game) {
   const cumulative = computeSessionTotals(game);
 
   const lines = game.sessionHistory.map(h => {
+    // Backward compatibility for in-memory sessions that still have `gameNumber`.
     const roundNo = h.roundNumber ?? h.gameNumber ?? '?';
     const avg = h.scores?.avgPosition ?? '?';
     const roundTotal = computeRoundTotal(h);
@@ -96,15 +97,8 @@ function buildRematchComponents() {
 
 function computeRoundTotal(roundHistory) {
   let total = 0;
-  const guesserScores = roundHistory?.scores?.guesserScores;
-  if (guesserScores instanceof Map) {
-    for (const [, value] of guesserScores) {
-      total += value?.total ?? 0;
-    }
-  } else if (guesserScores && typeof guesserScores === 'object') {
-    for (const value of Object.values(guesserScores)) {
-      total += value?.total ?? 0;
-    }
+  for (const [, value] of iterateGuesserScores(roundHistory?.scores?.guesserScores)) {
+    total += value?.total ?? 0;
   }
   total += roundHistory?.scores?.clueGiverScore?.total ?? 0;
   return total;
@@ -114,15 +108,8 @@ function computeSessionTotals(game) {
   const totals = new Map();
 
   for (const round of game.sessionHistory ?? []) {
-    const guesserScores = round?.scores?.guesserScores;
-    if (guesserScores instanceof Map) {
-      for (const [userId, value] of guesserScores) {
-        totals.set(userId, (totals.get(userId) ?? 0) + (value?.total ?? 0));
-      }
-    } else if (guesserScores && typeof guesserScores === 'object') {
-      for (const [userId, value] of Object.entries(guesserScores)) {
-        totals.set(userId, (totals.get(userId) ?? 0) + (value?.total ?? 0));
-      }
+    for (const [userId, value] of iterateGuesserScores(round?.scores?.guesserScores)) {
+      totals.set(userId, (totals.get(userId) ?? 0) + (value?.total ?? 0));
     }
 
     if (round?.clueGiverId) {
@@ -136,6 +123,12 @@ function computeSessionTotals(game) {
   return [...totals.entries()]
     .map(([userId, total]) => ({ userId, total }))
     .sort((a, b) => b.total - a.total);
+}
+
+function iterateGuesserScores(guesserScores) {
+  if (guesserScores instanceof Map) return guesserScores.entries();
+  if (guesserScores && typeof guesserScores === 'object') return Object.entries(guesserScores);
+  return [];
 }
 
 module.exports = { runEndSequence, buildSessionSummaryEmbed, buildRematchComponents, computeSessionTotals };
