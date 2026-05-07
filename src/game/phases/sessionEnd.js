@@ -102,7 +102,7 @@ async function postSequentialReveal(thread, players) {
     const p = list[i];
     const emoji = ROLE_EMOJI[p.role] ?? '❓';
     const roleText = p.role === ROLES.MAYOR && p.secretRole
-      ? `${p.role} + ${p.secretRole}`
+      ? `${p.role} (Secret: ${p.secretRole})`
       : p.role;
     await thread.send({ content: `${emoji}  <@${p.id}> was the **${roleText}**` }).catch(() => {});
     if (i < list.length - 1) await delay(1500);
