@@ -129,7 +129,7 @@ function buildPlayerStatsEmbed(game) {
     const maybe   = s.maybe   ?? 0;
     const soClose = s.soClose ?? 0;
     const wayOff  = s.wayOff  ?? 0;
-    return `<@${p.id}> — ✅ **${yes}** Yes  ❌ **${no}** No  ❔ **${maybe}** Maybe  🔥 **${soClose}** So Close  🚫 **${wayOff}** Way Off`;
+    return `<@${p.id}> — ✅ **${yes}** Yes ❌ **${no}** No ❔ **${maybe}** Maybe 🔥 **${soClose}** So Close 🚫 **${wayOff}** Way Off`;
   });
 
   return new EmbedBuilder()
