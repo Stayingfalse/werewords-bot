@@ -149,7 +149,7 @@ module.exports = {
       const { customId: modalId, channelId, guildId, user } = interaction;
 
       // ── Dispatch Wavelength modal ───────────────────────────────────────────
-      if (modalId === 'wl_clue_modal') {
+      if (modalId === 'wl_clue_modal' || modalId === 'wl_rr_times_modal') {
         const { handleWavelengthInteraction } = require('../game/wavelength/interactionHandler');
         try {
           return await handleWavelengthInteraction(interaction, client);

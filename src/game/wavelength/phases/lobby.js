@@ -1,6 +1,7 @@
 'use strict';
 
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { describeSessionMode } = require('./sessionConfig');
 
 /**
  * Public lobby embed shown in the parent channel.
@@ -57,9 +58,10 @@ function buildLobbyComponents(threadId) {
  * "Round In Progress" embed shown in the parent channel while the session is active.
  */
 function buildActiveEmbed(game) {
+  const mode = describeSessionMode(game.sessionMode);
   return new EmbedBuilder()
     .setTitle('〰️ Wavelength — Round In Progress')
-    .setDescription(`**Round ${game.gameNumber}** is underway inside the thread.`)
+    .setDescription(`**Round ${game.gameNumber}** is underway inside the thread.\n**Mode:** ${mode}`)
     .addFields({ name: '🧵 Game Thread', value: `<#${game.threadId}>` })
     .setColor(0xF39C12)
     .setTimestamp();

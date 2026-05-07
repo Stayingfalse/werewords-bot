@@ -1,6 +1,7 @@
 'use strict';
 
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { describeSessionMode } = require('./sessionConfig');
 
 /**
  * Run the end-of-round sequence: post winner summary + session controls.
@@ -32,9 +33,10 @@ async function runEndSequence(game, client, scores) {
   if (!thread) return;
 
   // ── Post session summary + rematch controls ────────────────────────────────
+  const goal = evaluateSessionGoal(game);
   await thread.send({
     embeds: [buildSessionSummaryEmbed(game)],
-    components: buildRematchComponents(),
+    components: buildRematchComponents(goal.complete),
   }).catch(() => {});
 }
 
@@ -43,6 +45,7 @@ async function runEndSequence(game, client, scores) {
  */
 function buildSessionSummaryEmbed(game) {
   const cumulative = computeSessionTotals(game);
+  const goal = evaluateSessionGoal(game);
 
   const lines = game.sessionHistory.map(h => {
     // Backward compatibility for in-memory sessions that still have `gameNumber`.
@@ -58,6 +61,7 @@ function buildSessionSummaryEmbed(game) {
   const embed = new EmbedBuilder()
     .setTitle('〰️ Wavelength — Session Summary')
     .setDescription(lines.length > 0 ? lines.join('\n\n') : '*No rounds yet.*')
+    .addFields({ name: '🎮 Session Mode', value: describeSessionMode(game.sessionMode) })
     .setColor(0x5865F2)
     .setTimestamp();
 
@@ -68,19 +72,24 @@ function buildSessionSummaryEmbed(game) {
     });
   }
 
+  if (goal.message) {
+    embed.addFields({ name: goal.complete ? '🏁 Goal Reached' : '📌 Goal Progress', value: goal.message });
+  }
+
   return embed;
 }
 
 /**
  * Rematch / Close buttons (only the host can use them).
  */
-function buildRematchComponents() {
+function buildRematchComponents(disableNextRound = false) {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('wl_rematch_same')
       .setLabel('Next Round')
       .setStyle(ButtonStyle.Primary)
-      .setEmoji('🔄'),
+      .setEmoji('🔄')
+      .setDisabled(disableNextRound),
     new ButtonBuilder()
       .setCustomId('wl_rematch_open')
       .setLabel('New Game (Open Signups)')
@@ -125,10 +134,55 @@ function computeSessionTotals(game) {
     .sort((a, b) => b.total - a.total);
 }
 
+function evaluateSessionGoal(game) {
+  const sessionMode = game.sessionMode;
+  if (!sessionMode || sessionMode.type === 'endless') {
+    return { complete: false, message: null };
+  }
+
+  if (sessionMode.type === 'round_robin_times') {
+    const target = Math.max(1, sessionMode.targetClueTurns ?? 1);
+    const counts = game.clueOrderState?.clueTurnsByPlayer ?? {};
+    const playerIds = [...game.players.keys()];
+    const everyoneComplete = playerIds.length > 0 && playerIds.every((id) => (counts[id] ?? 0) >= target);
+    const progressLines = playerIds
+      .map((id) => `<@${id}>: **${counts[id] ?? 0}/${target}**`)
+      .join(' · ');
+    return { complete: everyoneComplete, message: progressLines || 'No players tracked yet.' };
+  }
+
+  if (sessionMode.type === 'snake_points') {
+    const target = Math.max(1, sessionMode.targetPoints ?? 1);
+    const totals = computeSessionTotals(game);
+    const winner = totals.find(entry => entry.total >= target) ?? null;
+    if (winner) {
+      return {
+        complete: true,
+        message: `<@${winner.userId}> reached **${winner.total}** points (target: **${target}**).`,
+      };
+    }
+    const leader = totals[0];
+    return {
+      complete: false,
+      message: leader
+        ? `Leader: <@${leader.userId}> at **${leader.total}/${target}** points.`
+        : `First player to **${target}** points wins.`,
+    };
+  }
+
+  return { complete: false, message: null };
+}
+
 function iterateGuesserScores(guesserScores) {
   if (guesserScores instanceof Map) return guesserScores.entries();
   if (guesserScores && typeof guesserScores === 'object') return Object.entries(guesserScores);
   return [];
 }
 
-module.exports = { runEndSequence, buildSessionSummaryEmbed, buildRematchComponents, computeSessionTotals };
+module.exports = {
+  runEndSequence,
+  buildSessionSummaryEmbed,
+  buildRematchComponents,
+  computeSessionTotals,
+  evaluateSessionGoal,
+};

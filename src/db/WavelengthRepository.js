@@ -9,12 +9,12 @@ const stmtUpsert = db.prepare(`
     (thread_id, guild_id, channel_id, host_id, host_username,
      message_id, board_message_id, phase, players, clue_giver_id,
      spectrum_options, chosen_spectrum, target_position, clue,
-     guesses, game_number, created_at)
+     guesses, session_mode, clue_order_state, game_number, created_at)
   VALUES
-    (@thread_id, @guild_id, @channel_id, @host_id, @host_username,
+     (@thread_id, @guild_id, @channel_id, @host_id, @host_username,
      @message_id, @board_message_id, @phase, @players, @clue_giver_id,
      @spectrum_options, @chosen_spectrum, @target_position, @clue,
-     @guesses, @game_number, @created_at)
+     @guesses, @session_mode, @clue_order_state, @game_number, @created_at)
   ON CONFLICT(thread_id) DO UPDATE SET
     guild_id         = excluded.guild_id,
     channel_id       = excluded.channel_id,
@@ -30,6 +30,8 @@ const stmtUpsert = db.prepare(`
     target_position  = excluded.target_position,
     clue             = excluded.clue,
     guesses          = excluded.guesses,
+    session_mode     = excluded.session_mode,
+    clue_order_state = excluded.clue_order_state,
     game_number      = excluded.game_number
 `);
 
@@ -60,6 +62,8 @@ function upsert(game) {
     target_position:  game.targetPosition ?? null,
     clue:             game.clue ?? null,
     guesses:          JSON.stringify(Object.fromEntries(game.guesses ?? new Map())),
+    session_mode:     game.sessionMode ? JSON.stringify(game.sessionMode) : null,
+    clue_order_state: game.clueOrderState ? JSON.stringify(game.clueOrderState) : null,
     game_number:      game.gameNumber,
     created_at:       game._createdAt ?? Date.now(),
   });

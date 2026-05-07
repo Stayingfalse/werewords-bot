@@ -139,6 +139,10 @@ async function restoreWavelength(client, WavelengthRepository) {
 
   const { startRevealPhase } = require('../game/wavelength/phases/reveal');
   const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+  const {
+    buildSessionModePromptEmbed,
+    buildSessionModePromptComponents,
+  } = require('../game/wavelength/phases/sessionConfig');
 
   for (const row of rows) {
     if (row.phase === 'ended') {
@@ -168,6 +172,10 @@ async function restoreWavelength(client, WavelengthRepository) {
       clue:            row.clue,
       guesses,
       guessTimeout:    null,
+      sessionMode:     row.session_mode ? JSON.parse(row.session_mode) : null,
+      clueOrderState:  row.clue_order_state
+        ? JSON.parse(row.clue_order_state)
+        : { roundRobinIndex: 0, snakeIndex: 0, snakeDirection: 1, clueTurnsByPlayer: {} },
       gameNumber:      row.game_number,
       sessionHistory:  [],
       _createdAt:      row.created_at,
@@ -191,7 +199,13 @@ async function restoreWavelength(client, WavelengthRepository) {
 
     await thread.send({ content: '⚠️ Bot restarted. Attempting to resume Wavelength game…' }).catch(() => {});
 
-    if (row.phase === 'cluing') {
+    if (row.phase === 'setup') {
+      await thread.send({
+        content: `⚙️ <@${game.hostId}> choose a session mode to resume this game.`,
+        embeds: [buildSessionModePromptEmbed(game)],
+        components: buildSessionModePromptComponents(),
+      }).catch(() => {});
+    } else if (row.phase === 'cluing') {
       // Re-post the "Open Clue Giver Panel" button.
       await thread.send({
         content: `<@${game.clueGiverId}> — the bot restarted. Click below to reopen your Clue Giver panel.`,
