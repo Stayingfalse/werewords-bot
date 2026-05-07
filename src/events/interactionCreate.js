@@ -166,7 +166,7 @@ module.exports = {
       }
 
       if (modalId === 'ww_word_modal') {
-        const game = gameManager.getGame(channelId);
+        const game = client.gameManager.getGame(channelId);
 
         if (!game || game.phase !== 'playing') {
           return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
@@ -249,7 +249,7 @@ module.exports = {
       customId.startsWith('ww_cancel_')
     ) {
       const threadId = customId.split('_')[2];
-      const game = gameManager.getGame(threadId);
+      const game = client.gameManager.getGame(threadId);
 
       // ── ww_join_{threadId} ─────────────────────────────────────────────────
       if (customId.startsWith('ww_join_')) {
@@ -257,7 +257,7 @@ module.exports = {
           return interaction.reply({ content: 'There is no active lobby to join.', flags: MessageFlags.Ephemeral });
         }
 
-        const added = gameManager.addPlayer(threadId, user);
+        const added = client.gameManager.addPlayer(threadId, user);
         if (!added) {
           const reason = game.players.size >= 10
             ? 'The lobby is full (10 players max).'
@@ -281,7 +281,7 @@ module.exports = {
           return interaction.reply({ content: 'There is no active lobby.', flags: MessageFlags.Ephemeral });
         }
 
-        const removed = gameManager.removePlayer(threadId, user.id);
+        const removed = client.gameManager.removePlayer(threadId, user.id);
         if (!removed) {
           return interaction.reply({ content: 'You are not in the game.', flags: MessageFlags.Ephemeral });
         }
@@ -314,7 +314,7 @@ module.exports = {
         game.phase = 'starting';
         await interaction.deferUpdate();
 
-        gameManager.assignRoles(threadId);
+        client.gameManager.assignRoles(threadId);
         game.wordOptions = sampleN(wordPool, 3);
 
         game.phase = 'playing';
@@ -381,7 +381,7 @@ module.exports = {
           }, 5_000);
         }
 
-        gameManager.deleteGame(threadId);
+        client.gameManager.deleteGame(threadId);
         return;
       }
 
@@ -390,7 +390,7 @@ module.exports = {
 
     // ── Game-thread buttons (fired from inside the private thread) ────────────
     // interaction.channelId === game.threadId when inside the thread.
-    const game = gameManager.getGame(channelId);
+    const game = client.gameManager.getGame(channelId);
 
     // ── ww_secret ────────────────────────────────────────────────────────────
     if (customId === 'ww_secret') {
