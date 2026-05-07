@@ -1,5 +1,25 @@
 'use strict';
 
+// Key time milestones (in seconds) at which TTS warnings are announced.
+const TTS_WARNINGS = new Set([60, 30, 10]);
+
+/**
+ * Attempts to send a TTS warning message to the thread.
+ * Fails silently so a broken TTS permission never kills the bot.
+ */
+async function sendTtsWarning(thread, seconds) {
+  try {
+    await thread.send({ content: `⏱️ ${seconds} seconds remaining!`, tts: true });
+  } catch (err) {
+    // TTS may be disabled or rate-limited — fall back to a plain message.
+    try {
+      await thread.send({ content: `⏱️ ${seconds} seconds remaining!` });
+    } catch {
+      // Ignore all errors; timer warnings are non-critical.
+    }
+  }
+}
+
 /**
  * Shared helper: start (or restart) the werewords game-board timer.
  * Called both from interactionCreate.js (initial start) and restore.js (crash recovery).
@@ -24,6 +44,11 @@ function startGameTimer(game, thread, client) {
       game.timeLeft = 0;
       await startVotingPhase(game, client);
       return;
+    }
+
+    // TTS warning at key milestones.
+    if (TTS_WARNINGS.has(game.timeLeft)) {
+      sendTtsWarning(thread, game.timeLeft);
     }
 
     const updateEvery = game.timeLeft > 60 ? 30

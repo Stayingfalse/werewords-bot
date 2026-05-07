@@ -61,6 +61,8 @@ class GameState {
     this.sessionHistory = [];
     /** userId of the player whose guess was accepted (for stats credit). */
     this.winnerGuesserUserId = null;
+    /** Set to true once the response-card stats embed has been posted (e.g. before voting). */
+    this.responseStatsShown = false;
   }
 }
 
@@ -146,6 +148,7 @@ class GameManager {
     game.boardMessageId = null;
     game.readyMessageId = null;
     game.winnerGuesserUserId = null;
+    game.responseStatsShown = false;
     game.timeLeft = 240;
 
     // Reset roles so they get reassigned on start.

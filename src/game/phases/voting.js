@@ -1,13 +1,25 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { isDemon } = require('../../utils/roles');
 const { endGame } = require('./endGame');
+const { buildPlayerStatsEmbed } = require('./sessionEnd');
 const GameRepository = require('../../db/GameRepository');
 
 const VOTE_COLOR = 0xEB459E; // pink
 
 const VOTE_DURATION = 60_000; // 60 seconds
 
-// ── Embed ──────────────────────────────────────────────────────────────────────
+// ── Embeds ─────────────────────────────────────────────────────────────────────
+
+function buildWordRevealEmbed(game) {
+  return new EmbedBuilder()
+    .setTitle('🔤  The Forbidden Word — Revealed!')
+    .setDescription(
+      `Time's up! The forbidden word was **"${game.word || '*(never chosen)*'}"**.\n\n` +
+      'Now vote for who you think the **Demon** is!',
+    )
+    .setColor(VOTE_COLOR)
+    .setTimestamp();
+}
 
 function buildVoteEmbed(game) {
   const timeStr = `<t:${Math.floor((Date.now() + VOTE_DURATION) / 1000)}:R>`;
@@ -15,7 +27,6 @@ function buildVoteEmbed(game) {
   return new EmbedBuilder()
     .setTitle('🗳️  The Forbidden Word — Vote!')
     .setDescription(
-      'The forbidden word was **not** guessed in time!\n\n' +
       'Vote for who you think the **Demon** is. ' +
       'If the majority picks correctly, the Townsfolk win!\n\n' +
       `Voting closes ${timeStr}. You can change your vote before it ends.`,
@@ -117,6 +128,13 @@ async function startVotingPhase(game, client) {
     const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
     if (bMsg) await bMsg.edit({ components: [] }).catch(() => {});
   }
+
+  // Announce the forbidden word.
+  await thread.send({ embeds: [buildWordRevealEmbed(game)] }).catch(() => {});
+
+  // Show per-player response card stats for this game.
+  await thread.send({ embeds: [buildPlayerStatsEmbed(game)] }).catch(() => {});
+  game.responseStatsShown = true;
 
   await thread.send({
     embeds: [buildVoteEmbed(game)],

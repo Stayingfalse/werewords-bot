@@ -174,10 +174,11 @@ async function runEndSequence(game, client, outcome, seerVictimUserId = null) {
 
     await delay(1000);
 
-    // 3b. Response-card stats.
-    await thread.send({ embeds: [buildPlayerStatsEmbed(game)] }).catch(() => {});
-
-    await delay(500);
+    // 3b. Response-card stats (only if not already shown before the voting phase).
+    if (!game.responseStatsShown) {
+      await thread.send({ embeds: [buildPlayerStatsEmbed(game)] }).catch(() => {});
+      await delay(500);
+    }
   }
 
   // 4. Record stats + session history.
