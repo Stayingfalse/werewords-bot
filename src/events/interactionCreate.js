@@ -704,11 +704,7 @@ module.exports = {
       game.tokens[tokenKey]--;
 
       // Track per-player response stats.
-      const guesserId = customId.startsWith('ww_guess_yes_')
-        ? customId.slice('ww_guess_yes_'.length)
-        : customId.startsWith('ww_guess_no_')
-          ? customId.slice('ww_guess_no_'.length)
-          : customId.slice('ww_guess_maybe_'.length);
+      const guesserId = customId.substring(customId.lastIndexOf('_') + 1);
       const guesser = game.players.get(guesserId);
       if (guesser?.responseStats) {
         if (customId.startsWith('ww_guess_yes_'))   guesser.responseStats.yes++;

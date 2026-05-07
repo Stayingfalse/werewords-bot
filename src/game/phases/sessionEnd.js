@@ -119,7 +119,7 @@ function delay(ms) {
  * Builds a per-player summary of how many Yes/No/Maybe/So-Close/Way-Off
  * response cards each player received during the game.
  * @param {import('../GameManager').GameState} game
- * @returns {EmbedBuilder|null}  null when no responses were recorded at all
+ * @returns {EmbedBuilder}
  */
 function buildPlayerStatsEmbed(game) {
   const lines = [...game.players.values()].map(p => {
@@ -129,7 +129,7 @@ function buildPlayerStatsEmbed(game) {
     const maybe   = s.maybe   ?? 0;
     const soClose = s.soClose ?? 0;
     const wayOff  = s.wayOff  ?? 0;
-    return `<@${p.id}> — ✅ **${yes}** Yes  ❌ **${no}** No  ❔ **${maybe}** Maybe  🔥 **${soClose}** So Close  ❌ **${wayOff}** Way Off`;
+    return `<@${p.id}> — ✅ **${yes}** Yes  ❌ **${no}** No  ❔ **${maybe}** Maybe  🔥 **${soClose}** So Close  🚫 **${wayOff}** Way Off`;
   });
 
   return new EmbedBuilder()
