@@ -98,17 +98,23 @@ function buildActiveEmbed(game) {
  * @param {import('../GameManager').GameState} game
  */
 function buildGameThreadEmbed(game) {
-  const playerMentions =
-    [...game.players.values()].map(p => `<@${p.id}>`).join(', ');
+  const readyCount = game.readyPlayers?.size ?? 0;
+  const totalCount = game.players.size;
+  const allReady = readyCount >= totalCount;
+
+  const playerLines = [...game.players.values()].map(p => {
+    const isReady = game.readyPlayers?.has(p.id);
+    return `${isReady ? '✅' : '⏳'} <@${p.id}>`;
+  }).join('\n') || '*No players*';
 
   return new EmbedBuilder()
     .setTitle('🔮  The Forbidden Word — Game Started!')
     .setDescription(
-      'Roles have been secretly assigned.\n' +
-      'Press **View Secret Info** to see your role.\n' +
-      '⏳ The Wordsmith is choosing the forbidden word…',
+      allReady
+        ? '✅ All players are ready — the game is live!'
+        : `Roles have been secretly assigned.\nPress **View Secret Info** to see your role, then click **I'm Ready!** to confirm.\n\n⏳ Waiting for players: **${readyCount} / ${totalCount}** ready`,
     )
-    .addFields({ name: 'Players', value: playerMentions })
+    .addFields({ name: 'Player Status', value: playerLines })
     .setColor(PLAYING_COLOR)
     .setFooter({ text: 'Game board loading…' })
     .setTimestamp();

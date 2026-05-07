@@ -81,11 +81,49 @@ function buildSecretContent(player, word) {
   };
 }
 
+/** Single-button row shown in ephemeral secret-info for non-Wordsmith players. */
+function buildReadyComponents() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('ww_ready')
+        .setLabel("I'm Ready!")
+        .setEmoji('✅')
+        .setStyle(ButtonStyle.Success),
+    ),
+  ];
+}
+
+/** Edits the "Game Started" embed to reflect the current ready-up state. */
+async function updateReadyEmbed(game, client) {
+  if (!game.readyMessageId) return;
+  const thread = await client.channels.fetch(game.threadId).catch(() => null);
+  if (!thread) return;
+  const msg = await thread.messages.fetch(game.readyMessageId).catch(() => null);
+  if (!msg) return;
+  await msg.edit({
+    embeds: [buildGameThreadEmbed(game)],
+    components: buildPlayingComponents(),
+  }).catch(() => {});
+}
+
+/**
+ * Starts the timer if and only if every player has readied up and the timer
+ * isn't already running.  Also sends a "let's go!" announcement.
+ */
+async function maybeStartTimer(game, client) {
+  if (game.timerInterval !== null) return;
+  if (game.readyPlayers.size < game.players.size) return;
+  const thread = await client.channels.fetch(game.threadId).catch(() => null);
+  if (!thread) return;
+  await thread.send({ content: '⏱️ All players are ready — the timer has started! Good luck!' }).catch(() => {});
+  startGameTimer(game, thread, client);
+}
+
 module.exports = {
   name: 'interactionCreate',
 
   async execute(interaction, client) {
-    const { gameManager } = client;
 
     // ── Slash commands ───────────────────────────────────────────────────────
     if (interaction.isChatInputCommand()) {
@@ -153,6 +191,7 @@ module.exports = {
         }
 
         game.word = chosen;
+        game.readyPlayers.add(user.id);
 
         await interaction.reply({
           content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}${getWordsmithSecretRoleText(player)}\n\n✅ You chose the forbidden word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
@@ -165,9 +204,13 @@ module.exports = {
           const pendingPlayer = game.players.get(pending.user.id);
           if (!pendingPlayer) continue;
           const { content } = buildSecretContent(pendingPlayer, game.word);
-          await pending.editReply({ content }).catch(() => {});
+          const pendingReadyComponents = game.readyPlayers.has(pendingPlayer.id) ? [] : buildReadyComponents();
+          await pending.editReply({ content, components: pendingReadyComponents }).catch(() => {});
         }
         game.pendingSecretInteractions = [];
+
+        await updateReadyEmbed(game, client);
+        await maybeStartTimer(game, client);
       }
       return;
     }
@@ -285,10 +328,12 @@ module.exports = {
         // Post the game thread welcome embed + secret info button.
         const thread = await client.channels.fetch(threadId).catch(() => null);
         if (thread) {
-          await thread.send({
+          const startMsg = await thread.send({
             embeds: [buildGameThreadEmbed(game)],
             components: buildPlayingComponents(),
-          });
+          }).catch(() => null);
+
+          if (startMsg) game.readyMessageId = startMsg.id;
 
           // Post the live game board with Mayor action buttons.
           const boardMsg = await thread.send({
@@ -303,8 +348,7 @@ module.exports = {
             upsertGame(game);
           }
 
-          // Tick every second, using the shared timer helper.
-          startGameTimer(game, thread, client);
+          // Timer starts once all players have confirmed their roles (ww_ready).
         }
       }
 
@@ -378,15 +422,48 @@ module.exports = {
 
       // Demon / Librarian / Townsfolk
       const { content, wordPending } = buildSecretContent(player, game.word);
+      const alreadyReady = game.readyPlayers.has(user.id);
+      const readyComponents = alreadyReady ? [] : buildReadyComponents();
 
       if (!wordPending) {
-        return interaction.reply({ content, flags: MessageFlags.Ephemeral });
+        return interaction.reply({ content, components: readyComponents, flags: MessageFlags.Ephemeral });
       }
 
       // Word not yet chosen — defer and queue for auto-update.
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      await interaction.editReply({ content });
+      await interaction.editReply({ content, components: readyComponents });
       game.pendingSecretInteractions.push(interaction);
+      return;
+    }
+
+    // ── ww_ready (player confirms they have seen their secret role info) ───────
+    if (customId === 'ww_ready') {
+      if (!game || game.phase !== 'playing') {
+        return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
+      }
+
+      const player = game.players.get(user.id);
+      if (!player) {
+        return interaction.reply({ content: 'You are not in this game.', flags: MessageFlags.Ephemeral });
+      }
+
+      if (game.readyPlayers.has(user.id)) {
+        return interaction.update({
+          content: '✅ You have already confirmed you are ready!',
+          components: [],
+        });
+      }
+
+      game.readyPlayers.add(user.id);
+
+      // Update the ephemeral to confirm readiness and remove the button.
+      await interaction.update({
+        content: `✅ You're ready! (${game.readyPlayers.size} / ${game.players.size} players ready)`,
+        components: [],
+      });
+
+      await updateReadyEmbed(game, client);
+      await maybeStartTimer(game, client);
       return;
     }
 
@@ -412,6 +489,7 @@ module.exports = {
       }
 
       game.word = chosen;
+      game.readyPlayers.add(user.id);
 
       await interaction.update({
         content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}${getWordsmithSecretRoleText(player)}\n\n✅ You chose the forbidden word: **${game.word}**\n\nUse the buttons below to respond to questions:`,
@@ -423,9 +501,13 @@ module.exports = {
         const pendingPlayer = game.players.get(pending.user.id);
         if (!pendingPlayer) continue;
         const { content } = buildSecretContent(pendingPlayer, game.word);
-        await pending.editReply({ content }).catch(() => {});
+        const pendingReadyComponents = game.readyPlayers.has(pendingPlayer.id) ? [] : buildReadyComponents();
+        await pending.editReply({ content, components: pendingReadyComponents }).catch(() => {});
       }
       game.pendingSecretInteractions = [];
+
+      await updateReadyEmbed(game, client);
+      await maybeStartTimer(game, client);
       return;
     }
 
@@ -621,6 +703,19 @@ module.exports = {
 
       game.tokens[tokenKey]--;
 
+      // Track per-player response stats.
+      const guesserId = customId.startsWith('ww_guess_yes_')
+        ? customId.slice('ww_guess_yes_'.length)
+        : customId.startsWith('ww_guess_no_')
+          ? customId.slice('ww_guess_no_'.length)
+          : customId.slice('ww_guess_maybe_'.length);
+      const guesser = game.players.get(guesserId);
+      if (guesser?.responseStats) {
+        if (customId.startsWith('ww_guess_yes_'))   guesser.responseStats.yes++;
+        else if (customId.startsWith('ww_guess_no_')) guesser.responseStats.no++;
+        else                                          guesser.responseStats.maybe++;
+      }
+
       const responseLine = customId.startsWith('ww_guess_yes_')
         ? '\n✅ **Yes — keep narrowing it down!**'
         : customId.startsWith('ww_guess_no_')
@@ -690,6 +785,16 @@ module.exports = {
       game.tokens.so_close_way_off--;
 
       const isSoClose = customId.startsWith('ww_guess_soclose_');
+
+      // Track per-player response stats.
+      const scGuesserId = isSoClose
+        ? customId.slice('ww_guess_soclose_'.length)
+        : customId.slice('ww_guess_wayoff_'.length);
+      const scGuesser = game.players.get(scGuesserId);
+      if (scGuesser?.responseStats) {
+        if (isSoClose) scGuesser.responseStats.soClose++;
+        else            scGuesser.responseStats.wayOff++;
+      }
 
       // Edit the guess announcement to show the result, remove buttons.
       await interaction.update({
@@ -860,11 +965,13 @@ module.exports = {
       const thread = await client.channels.fetch(game.threadId).catch(() => null);
       if (!thread) return;
 
-      await thread.send({
+      const startMsg = await thread.send({
         content: `🔄 **Game ${resetGame.gameNumber} starting — same group!**`,
         embeds: [buildGameThreadEmbed(resetGame)],
         components: buildPlayingComponents(),
-      }).catch(() => {});
+      }).catch(() => null);
+
+      if (startMsg) resetGame.readyMessageId = startMsg.id;
 
       const boardMsg = await thread.send({
         embeds: [buildBoardEmbed(resetGame)],
@@ -877,7 +984,7 @@ module.exports = {
       const { upsert: upsertGame } = require('../db/GameRepository');
       upsertGame(resetGame);
 
-      startGameTimer(resetGame, thread, client);
+      // Timer starts once all players have confirmed their roles (ww_ready).
 
       return;
     }

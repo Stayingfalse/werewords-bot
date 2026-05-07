@@ -38,6 +38,8 @@ class GameState {
     this.pendingSecretInteractions = [];
     this.tokens = { yes_no: 36, maybe: 12, correct: 1, so_close_way_off: 2 };
     this.readyPlayers = new Set();
+    /** Discord message ID of the "Game Started" embed (used to update ready-up status). */
+    this.readyMessageId = null;
 
     // Populated during the playing phase
     this.timerInterval = null;
@@ -142,6 +144,7 @@ class GameManager {
     game.readyPlayers = new Set();
     game.votes = new Map();
     game.boardMessageId = null;
+    game.readyMessageId = null;
     game.winnerGuesserUserId = null;
     game.timeLeft = 240;
 
@@ -149,6 +152,7 @@ class GameManager {
     for (const player of game.players.values()) {
       player.role = null;
       player.secretRole = null;
+      player.responseStats = { yes: 0, no: 0, maybe: 0, soClose: 0, wayOff: 0 };
     }
 
     GameRepository.upsert(game);
@@ -165,7 +169,13 @@ class GameManager {
     const game = this.games.get(threadId);
     if (!game || game.players.has(user.id) || game.players.size >= 10) return false;
 
-    game.players.set(user.id, { id: user.id, username: user.username, role: null, secretRole: null });
+    game.players.set(user.id, {
+      id: user.id,
+      username: user.username,
+      role: null,
+      secretRole: null,
+      responseStats: { yes: 0, no: 0, maybe: 0, soClose: 0, wayOff: 0 },
+    });
     GameRepository.upsert(game);
     return true;
   }

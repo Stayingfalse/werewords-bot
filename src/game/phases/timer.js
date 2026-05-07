@@ -9,9 +9,9 @@
  * @param {import('discord.js').Client} client
  */
 function startGameTimer(game, thread, client) {
-  const { buildBoardEmbed, buildMayorActionComponents } = require('../game/phases/playing');
-  const { startVotingPhase } = require('../game/phases/voting');
-  const { updateTimeLeft } = require('../db/GameRepository');
+  const { buildBoardEmbed, buildMayorActionComponents } = require('./playing');
+  const { startVotingPhase } = require('./voting');
+  const { updateTimeLeft } = require('../../db/GameRepository');
 
   let boardRefreshing = false;
 
