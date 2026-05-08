@@ -8,6 +8,7 @@ const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const GameManager = require('./game/GameManager');
+const { CheeseThiefManager } = require('./game/CheeseThiefManager');
 const WavelengthManager = require('./game/WavelengthManager');
 const BirthdayManager = require('./game/BirthdayManager');
 const SassyManager = require('./game/SassyManager');
@@ -23,6 +24,7 @@ const client = new Client({
 
 client.commands = new Collection();
 client.gameManager = new GameManager();
+client.cheeseThiefManager = new CheeseThiefManager();
 client.wavelengthManager = new WavelengthManager();
 client.birthdayManager = new BirthdayManager();
 
