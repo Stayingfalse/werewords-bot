@@ -50,7 +50,7 @@ function upsert(game) {
     ready_message_id: game.readyMessageId ?? null,
     phase: game.phase,
     players: JSON.stringify([...game.players.values()]),
-    ready_players: JSON.stringify([...game.readyPlayers.values()]),
+    ready_players: JSON.stringify([...game.readyPlayers]),
     votes: JSON.stringify(Object.fromEntries(game.votes ?? new Map())),
     current_wake_number: game.currentWakeNumber ?? 0,
     phase_ends_at: game.phaseEndsAt ?? null,
