@@ -124,7 +124,7 @@ async function startGameTimer(game, thread, client) {
   }
 
   if (game.phase !== 'playing') return;
-  game.currentWakeNumber = game.currentWakeNumber || 1;
+  game.currentWakeNumber = game.currentWakeNumber ?? 1;
   await runWakeStep(game, thread, client);
 }
 

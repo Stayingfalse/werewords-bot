@@ -86,6 +86,11 @@ async function restoreWerewords(client, GameRepository) {
      if (!game.thiefId) {
        game.thiefId = [...game.players.values()].find(p => p.role === ROLES.WEREWOLF)?.id ?? null;
      }
+     if (!game.thiefId && (row.phase === 'playing' || row.phase === 'discussion' || row.phase === 'voting')) {
+       GameRepository.remove(row.thread_id);
+       client.gameManager.games.delete(row.thread_id);
+       continue;
+     }
 
     client.gameManager.games.set(row.thread_id, game);
 

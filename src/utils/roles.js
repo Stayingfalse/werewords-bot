@@ -1,5 +1,5 @@
 const ROLES = Object.freeze({
-  MAYOR: 'Wordsmith (Unused)',
+  MAYOR: 'Wordsmith',
   WEREWOLF: 'Cheese Thief',
   SEER: 'Fall Mouse',
   VILLAGER: 'Sleepy Mice',
@@ -40,7 +40,7 @@ function isDemon(player) {
  * @returns {boolean}
  */
 function isLibrarian(player) {
-  return getEffectiveRole(player) === ROLES.SEER;
+  return isFallMouse(player);
 }
 
 function isFallMouse(player) {

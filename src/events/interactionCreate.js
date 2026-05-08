@@ -73,8 +73,9 @@ async function refreshBoardMessage(game, client) {
 function buildSecretContent(player, game) {
   const roleDesc = ROLE_DESCRIPTIONS[player.role] ?? '';
   const dieText = player.dieValue ? `\n\n🎲 Your die number: **${player.dieValue}**` : '';
+  const thiefInfoText = game.thiefId ? `<@${game.thiefId}>` : '*Unavailable*';
   const accompliceText = player.isAccomplice
-    ? `\n\n🤝 You are the **accomplice**.\nThe **Cheese Thief** is <@${game.thiefId ?? 'unknown'}>.`
+    ? `\n\n🤝 You are the **accomplice**.\nThe **Cheese Thief** is ${thiefInfoText}.`
     : '';
   const theftText = game.cheeseStolen
     ? `\n\n🧀 Cheese status: **Stolen at wake ${game.stolenAtWake ?? '?'}**`
@@ -350,6 +351,9 @@ module.exports = {
         game.accompliceId = null;
         game.thiefId = [...game.players.values()].find(p => p.role === ROLES.WEREWOLF)?.id ?? null;
         game.stolenAtWake = null;
+        if (!game.thiefId) {
+          return interaction.followUp({ content: '❌ Failed to assign Cheese Thief. Please start again.', flags: MessageFlags.Ephemeral });
+        }
 
         // Show active game in the main channel and remove lobby buttons.
         await interaction.editReply({
@@ -1138,6 +1142,9 @@ module.exports = {
       resetGame.accompliceId = null;
       resetGame.thiefId = [...resetGame.players.values()].find(p => p.role === ROLES.WEREWOLF)?.id ?? null;
       resetGame.stolenAtWake = null;
+      if (!resetGame.thiefId) {
+        return interaction.followUp({ content: '❌ Failed to assign Cheese Thief. Try rematch again.', flags: MessageFlags.Ephemeral });
+      }
 
       // Update main channel embed → In Progress.
       if (resetGame.channelId && resetGame.messageId) {
