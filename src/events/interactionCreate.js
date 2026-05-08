@@ -16,7 +16,7 @@ const { startRevealPhase, buildSeerPickComponents } = require('../game/phases/re
 const { startVotingPhase, tallyVotes } = require('../game/phases/voting');
 const { buildSessionSummaryEmbed, buildRematchComponents } = require('../game/phases/sessionEnd');
 const { getGuildStats } = require('../db/StatsRepository');
-const { startGameTimer } = require('../game/phases/timer');
+const { startGameTimer, getAwakePlayerIds } = require('../game/phases/timer');
 const {
   ROLES,
   ROLE_DESCRIPTIONS,
@@ -44,6 +44,12 @@ function getWordsmithSecretRoleText(player) {
   return `\n\n🎭 Secret role: **${player.secretRole}**`;
 }
 
+function assignDiceValues(game) {
+  for (const player of game.players.values()) {
+    player.dieValue = Math.floor(Math.random() * 6) + 1;
+  }
+}
+
 async function refreshBoardMessage(game, client) {
   if (!game?.boardMessageId) return;
   const thread = await client.channels.fetch(game.threadId).catch(() => null);
@@ -57,31 +63,19 @@ async function refreshBoardMessage(game, client) {
 }
 
 /**
- * Builds the ephemeral secret-info text for a player.
- * @param {{ role: string, secretRole?: string|null }} player
- * @param {string|null} word  Current game.word (may be null if Mayor hasn't picked yet)
- * @returns {{ content: string, wordPending: boolean }}
+ * @param {{ role: string, dieValue?: number, isAccomplice?: boolean }} player
+ * @param {import('../game/GameManager').GameState} game
  */
-function buildSecretContent(player, word) {
-  const effectiveRole = getEffectiveRole(player);
-  const roleDesc = `${ROLE_DESCRIPTIONS[player.role] ?? ''}${getWordsmithSecretRoleText(player)}`;
-  const knowsWord = player.role === ROLES.MAYOR || [ROLES.WEREWOLF, ROLES.SEER].includes(effectiveRole);
-
-  if (!knowsWord) {
-    return { content: roleDesc, wordPending: false };
-  }
-
-  if (word) {
-    return {
-      content: `${roleDesc}\n\n🔤 The forbidden word is: **${word}**`,
-      wordPending: false,
-    };
-  }
-
-  return {
-    content: `${roleDesc}\n\n⏳ The Wordsmith is still choosing the forbidden word — this message will update automatically once it is chosen.`,
-    wordPending: true,
-  };
+function buildSecretContent(player, game) {
+  const roleDesc = ROLE_DESCRIPTIONS[player.role] ?? '';
+  const dieText = player.dieValue ? `\n\n🎲 Your die number: **${player.dieValue}**` : '';
+  const accompliceText = player.isAccomplice
+    ? `\n\n🤝 You are the **accomplice**.\nThe **Cheese Thief** is <@${[...game.players.values()].find(p => p.role === ROLES.WEREWOLF)?.id ?? 'unknown'}>.`
+    : '';
+  const theftText = game.cheeseStolen
+    ? `\n\n🧀 Cheese status: **Stolen at wake ${game.stolenAtWake ?? '?'}**`
+    : '\n\n🧀 Cheese status: **Not stolen yet**';
+  return { content: `${roleDesc}${dieText}${accompliceText}${theftText}`, wordPending: false };
 }
 
 /** Single-button row shown in ephemeral secret-info for non-Wordsmith players. */
@@ -119,7 +113,7 @@ async function maybeStartTimer(game, client) {
   if (game.readyPlayers.size < game.players.size) return;
   const thread = await client.channels.fetch(game.threadId).catch(() => null);
   if (!thread) return;
-  await thread.send({ content: '⏱️ All players are ready — the timer has started! Good luck!' }).catch(() => {});
+  await thread.send({ content: '🌙 All players are ready — wake sequence starting now.' }).catch(() => {});
   startGameTimer(game, thread, client);
 }
 
@@ -226,7 +220,7 @@ module.exports = {
         for (const pending of game.pendingSecretInteractions) {
           const pendingPlayer = game.players.get(pending.user.id);
           if (!pendingPlayer) continue;
-          const { content } = buildSecretContent(pendingPlayer, game.word);
+          const { content } = buildSecretContent(pendingPlayer, game);
           const pendingReadyComponents = game.readyPlayers.has(pendingPlayer.id) ? [] : buildReadyComponents();
           await pending.editReply({ content, components: pendingReadyComponents }).catch(() => {});
         }
@@ -340,26 +334,37 @@ module.exports = {
           });
         }
 
-        game.phase = 'mode_select';
+        game.phase = 'starting';
         await interaction.deferUpdate();
 
-        // Show "choosing mode…" in the main channel and remove lobby buttons.
+        client.gameManager.assignRoles(threadId);
+        assignDiceValues(game);
+        game.phase = 'playing';
+        game.currentWakeNumber = 1;
+        game.phaseEndsAt = null;
+        game.cheeseStolen = false;
+        game.accompliceId = null;
+        game.stolenAtWake = null;
+
+        // Show active game in the main channel and remove lobby buttons.
         await interaction.editReply({
-          embeds: [buildModeSelectingEmbed(game)],
+          embeds: [buildActiveEmbed(game)],
           components: [],
         });
 
-        // Post the mode selection prompt in the game thread.
+        // Post game-start prompt in the game thread.
         const thread = await client.channels.fetch(threadId).catch(() => null);
         if (thread) {
-          await thread.send({
-            embeds: [buildModeSelectEmbed(game)],
-            components: buildModeSelectComponents(),
-          }).catch(() => {});
+          const startMsg = await thread.send({
+            embeds: [buildGameThreadEmbed(game)],
+            components: buildPlayingComponents(),
+          }).catch(() => null);
+          if (startMsg) game.readyMessageId = startMsg.id;
         }
 
         const { upsert: upsertGame } = require('../db/GameRepository');
         upsertGame(game);
+        return;
       }
 
       // ── ww_cancel_{threadId} ──────────────────────────────────────────────
@@ -404,70 +409,7 @@ module.exports = {
 
     // ── ww_mode_text / ww_mode_voice (host selects play mode) ─────────────────
     if (customId === 'ww_mode_text' || customId === 'ww_mode_voice') {
-      if (!game || game.phase !== 'mode_select') {
-        return interaction.reply({ content: 'No mode selection is in progress.', flags: MessageFlags.Ephemeral });
-      }
-      if (user.id !== game.hostId) {
-        return interaction.reply({ content: 'Only the host can choose the game mode.', flags: MessageFlags.Ephemeral });
-      }
-
-      const chosenMode = customId === 'ww_mode_text' ? 'text' : 'voice';
-      const modeEmoji  = chosenMode === 'voice' ? '🎙️' : '📝';
-      const modeLabel  = chosenMode === 'voice' ? 'Voice' : 'Text';
-
-      game.sessionMode = chosenMode;
-      game.phase = 'starting';
-
-      await interaction.deferUpdate();
-
-      // Remove the mode-select buttons and confirm the choice.
-      await interaction.editReply({
-        content: `${modeEmoji} **${modeLabel} Mode** selected!`,
-        embeds: [],
-        components: [],
-      });
-
-      client.gameManager.assignRoles(channelId);
-      game.wordOptions = sampleN(wordPool, 3);
-      game.phase = 'playing';
-
-      // Update main-channel lobby embed → Game In Progress.
-      if (game.channelId && game.messageId) {
-        const mainChannel = await client.channels.fetch(game.channelId).catch(() => null);
-        if (mainChannel) {
-          const lobbyMsg = await mainChannel.messages.fetch(game.messageId).catch(() => null);
-          if (lobbyMsg) {
-            await lobbyMsg.edit({
-              embeds: [buildActiveEmbed(game)],
-              components: [],
-            }).catch(() => {});
-          }
-        }
-      }
-
-      const thread = await client.channels.fetch(channelId).catch(() => null);
-      if (thread) {
-        const startMsg = await thread.send({
-          embeds: [buildGameThreadEmbed(game)],
-          components: buildPlayingComponents(),
-        }).catch(() => null);
-
-        if (startMsg) game.readyMessageId = startMsg.id;
-
-        // Post the live game board without action buttons.
-        const boardMsg = await thread.send({
-          embeds: [buildBoardEmbed(game)],
-          components: [],
-        }).catch(() => null);
-
-        if (boardMsg) game.boardMessageId = boardMsg.id;
-
-        // Timer starts once all players have confirmed their roles (ww_ready).
-      }
-
-      const { upsert: upsertGame } = require('../db/GameRepository');
-      upsertGame(game);
-      return;
+      return interaction.reply({ content: 'Mode selection is no longer used in this game.', flags: MessageFlags.Ephemeral });
     }
 
     // ── ww_secret ────────────────────────────────────────────────────────────
@@ -481,38 +423,10 @@ module.exports = {
         return interaction.reply({ content: 'You are not in this game.', flags: MessageFlags.Ephemeral });
       }
 
-      // Wordsmith gets the word-picker UI until they have chosen a word;
-      // afterwards they just see their word (no action buttons — responses go via
-      // guess messages in text mode, or per-player panels in voice mode).
-      if (player.role === ROLES.MAYOR) {
-        if (game.word) {
-          return interaction.reply({
-            content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}${getWordsmithSecretRoleText(player)}\n\n✅ You chose the forbidden word: **${game.word}**`,
-            components: [],
-            flags: MessageFlags.Ephemeral,
-          });
-        }
-        return interaction.reply({
-          content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}${getWordsmithSecretRoleText(player)}\n\n🔤 **Choose the forbidden word:**`,
-          components: buildMayorWordComponents(game.wordOptions),
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
-      // Demon / Librarian / Townsfolk
-      const { content, wordPending } = buildSecretContent(player, game.word);
+      const { content } = buildSecretContent(player, game);
       const alreadyReady = game.readyPlayers.has(user.id);
       const readyComponents = alreadyReady ? [] : buildReadyComponents();
-
-      if (!wordPending) {
-        return interaction.reply({ content, components: readyComponents, flags: MessageFlags.Ephemeral });
-      }
-
-      // Word not yet chosen — defer and queue for auto-update.
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      await interaction.editReply({ content, components: readyComponents });
-      game.pendingSecretInteractions.push(interaction);
-      return;
+      return interaction.reply({ content, components: readyComponents, flags: MessageFlags.Ephemeral });
     }
 
     // ── ww_ready (player confirms they have seen their secret role info) ───────
@@ -544,6 +458,95 @@ module.exports = {
       await updateReadyEmbed(game, client);
       await maybeStartTimer(game, client);
       return;
+    }
+
+    if (customId.startsWith('ww_inspect_')) {
+      if (!game || game.phase !== 'playing') {
+        return interaction.reply({ content: 'Wake actions are not active.', flags: MessageFlags.Ephemeral });
+      }
+      const awakePlayerIds = getAwakePlayerIds(game, game.currentWakeNumber);
+      if (awakePlayerIds.length !== 1 || awakePlayerIds[0] !== user.id) {
+        return interaction.reply({ content: 'Only the solo awake player can inspect right now.', flags: MessageFlags.Ephemeral });
+      }
+      const targetId = customId.split('ww_inspect_')[1];
+      if (!targetId || targetId === user.id) {
+        return interaction.reply({ content: 'You cannot inspect your own die.', flags: MessageFlags.Ephemeral });
+      }
+      const target = game.players.get(targetId);
+      if (!target) {
+        return interaction.reply({ content: 'That player is not in the game.', flags: MessageFlags.Ephemeral });
+      }
+      return interaction.reply({
+        content: `🔎 <@${target.id}> has die number **${target.dieValue ?? '?'}**.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    if (customId === 'ww_steal_cheese') {
+      if (!game || game.phase !== 'playing') {
+        return interaction.reply({ content: 'Wake actions are not active.', flags: MessageFlags.Ephemeral });
+      }
+      const player = game.players.get(user.id);
+      if (!player || player.role !== ROLES.WEREWOLF) {
+        return interaction.reply({ content: 'Only the Cheese Thief can steal the cheese.', flags: MessageFlags.Ephemeral });
+      }
+      const awakePlayerIds = getAwakePlayerIds(game, game.currentWakeNumber);
+      if (!awakePlayerIds.includes(user.id)) {
+        return interaction.reply({ content: 'You can only steal while awake.', flags: MessageFlags.Ephemeral });
+      }
+      if (game.cheeseStolen) {
+        return interaction.reply({ content: 'Cheese has already been stolen.', flags: MessageFlags.Ephemeral });
+      }
+
+      game.cheeseStolen = true;
+      game.stolenAtWake = game.currentWakeNumber;
+      const { upsert: upsertGame } = require('../db/GameRepository');
+      upsertGame(game);
+
+      const candidates = [...game.players.values()].filter(p => p.id !== user.id);
+      const rows = [];
+      for (let i = 0; i < candidates.length; i += 5) {
+        rows.push(new ActionRowBuilder().addComponents(
+          candidates.slice(i, i + 5).map(p => new ButtonBuilder()
+            .setCustomId(`ww_pick_accomplice_${p.id}`)
+            .setLabel(p.username)
+            .setStyle(ButtonStyle.Primary)),
+        ));
+      }
+
+      return interaction.reply({
+        content: '🧀 Cheese stolen. Pick your accomplice.',
+        components: rows,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    if (customId.startsWith('ww_pick_accomplice_')) {
+      if (!game || game.phase !== 'playing') {
+        return interaction.reply({ content: 'Wake actions are not active.', flags: MessageFlags.Ephemeral });
+      }
+      const player = game.players.get(user.id);
+      if (!player || player.role !== ROLES.WEREWOLF) {
+        return interaction.reply({ content: 'Only the Cheese Thief can choose an accomplice.', flags: MessageFlags.Ephemeral });
+      }
+
+      const targetId = customId.split('ww_pick_accomplice_')[1];
+      const target = game.players.get(targetId);
+      if (!target || target.id === user.id) {
+        return interaction.reply({ content: 'Invalid accomplice choice.', flags: MessageFlags.Ephemeral });
+      }
+
+      for (const p of game.players.values()) p.isAccomplice = false;
+      target.isAccomplice = true;
+      game.accompliceId = target.id;
+
+      const { upsert: upsertGame } = require('../db/GameRepository');
+      upsertGame(game);
+
+      return interaction.update({
+        content: `🤝 Accomplice selected: **${target.username}**.`,
+        components: [],
+      });
     }
 
     // ── ww_word_N (Mayor preset word buttons) ────────────────────────────────
@@ -579,7 +582,7 @@ module.exports = {
       for (const pending of game.pendingSecretInteractions) {
         const pendingPlayer = game.players.get(pending.user.id);
         if (!pendingPlayer) continue;
-        const { content } = buildSecretContent(pendingPlayer, game.word);
+        const { content } = buildSecretContent(pendingPlayer, game);
         const pendingReadyComponents = game.readyPlayers.has(pendingPlayer.id) ? [] : buildReadyComponents();
         await pending.editReply({ content, components: pendingReadyComponents }).catch(() => {});
       }
@@ -684,7 +687,7 @@ module.exports = {
 
     // ── ww_end_game (host force-ends an in-progress game) ────────────────────
     if (customId === 'ww_end_game') {
-      if (!game || (game.phase !== 'playing' && game.phase !== 'voting' && game.phase !== 'reveal')) {
+      if (!game || (game.phase !== 'playing' && game.phase !== 'discussion' && game.phase !== 'voting' && game.phase !== 'reveal')) {
         return interaction.reply({ content: 'There is no active game to end.', flags: MessageFlags.Ephemeral });
       }
 
@@ -1065,7 +1068,7 @@ module.exports = {
       return;
     }
 
-    // ── ww_vote_{targetId} (player votes for who they think is the Werewolf) ──
+    // ── ww_vote_{targetId} (player votes for who they think is the Cheese Thief) ──
     if (customId.startsWith('ww_vote_')) {
       if (!game || game.phase !== 'voting') {
         return interaction.reply({ content: 'Voting is not active.', flags: MessageFlags.Ephemeral });
@@ -1119,7 +1122,12 @@ module.exports = {
       if (!resetGame) return;
 
       client.gameManager.assignRoles(game.threadId);
-      resetGame.wordOptions = sampleN(wordPool, 3);
+      assignDiceValues(resetGame);
+      resetGame.currentWakeNumber = 1;
+      resetGame.phaseEndsAt = null;
+      resetGame.cheeseStolen = false;
+      resetGame.accompliceId = null;
+      resetGame.stolenAtWake = null;
 
       // Update main channel embed → In Progress.
       if (resetGame.channelId && resetGame.messageId) {
@@ -1145,15 +1153,8 @@ module.exports = {
       }).catch(() => null);
 
       if (startMsg) resetGame.readyMessageId = startMsg.id;
+      resetGame.boardMessageId = null;
 
-      const boardMsg = await thread.send({
-        embeds: [buildBoardEmbed(resetGame)],
-        components: [],
-      }).catch(() => null);
-
-      if (boardMsg) resetGame.boardMessageId = boardMsg.id;
-
-      // Also persist the boardMessageId now that we have it.
       const { upsert: upsertGame } = require('../db/GameRepository');
       upsertGame(resetGame);
 

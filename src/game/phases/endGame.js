@@ -29,6 +29,11 @@ const OUTCOMES = {
     description: 'The Townsfolk voted correctly and exposed the Demon!',
     color: 0x57F287, // green
   },
+  fall_mouse_vote: {
+    title: '🍂 Fall Mouse Wins!',
+    description: 'Fall Mouse was selected in the final accusation and wins alone.',
+    color: 0xFAA61A,
+  },
   werewolf_vote: {
     title: '😈 Demons Win!',
     description: 'The Townsfolk failed to identify the Demon.',
@@ -68,6 +73,10 @@ async function endGame(game, client, outcome, seerVictimUserId = null) {
   if (game.revealTimeout) {
     clearTimeout(game.revealTimeout);
     game.revealTimeout = null;
+  }
+  if (game.wakeTimeout) {
+    clearTimeout(game.wakeTimeout);
+    game.wakeTimeout = null;
   }
 
   game.phase = 'ended';

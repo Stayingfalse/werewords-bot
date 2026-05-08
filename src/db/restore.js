@@ -67,13 +67,19 @@ async function restoreWerewords(client, GameRepository) {
       revealTimeout:     null,
       gameNumber:        row.game_number,
       sessionHistory:    [],
-      winnerGuesserUserId: row.winner_guesser_user_id,
-      sessionMode:       row.session_mode ?? null,
-      voicePlayerMessageIds: row.voice_player_message_ids
-        ? new Map(Object.entries(JSON.parse(row.voice_player_message_ids)))
-        : new Map(),
-      _createdAt:        row.created_at,
-    };
+       winnerGuesserUserId: row.winner_guesser_user_id,
+       sessionMode:       row.session_mode ?? null,
+       voicePlayerMessageIds: row.voice_player_message_ids
+         ? new Map(Object.entries(JSON.parse(row.voice_player_message_ids)))
+         : new Map(),
+       currentWakeNumber: row.current_wake_number ?? 0,
+       phaseEndsAt: row.phase_ends_at ?? null,
+       cheeseStolen: !!row.cheese_stolen,
+       accompliceId: row.accomplice_id ?? null,
+       stolenAtWake: row.stolen_at_wake ?? null,
+       wakeTimeout: null,
+       _createdAt:        row.created_at,
+     };
 
     client.gameManager.games.set(row.thread_id, game);
 
@@ -96,10 +102,10 @@ async function restoreWerewords(client, GameRepository) {
     await thread.send({ content: '⚠️ Bot restarted. Attempting to resume game…' }).catch(() => {});
 
     // ── Phase-specific recovery ────────────────────────────────────────────
-    if (row.phase === 'playing') {
+    if (row.phase === 'playing' || row.phase === 'discussion') {
       // Restart the countdown from saved time_left.
       startGameTimer(game, thread, client);
-      if (game.boardMessageId) {
+      if (row.phase === 'playing' && game.boardMessageId) {
         const bMsg = await thread.messages.fetch(game.boardMessageId).catch(() => null);
         if (bMsg) {
           await bMsg.edit({

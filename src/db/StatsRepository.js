@@ -13,6 +13,7 @@ const { ROLES, isDemon, getEffectiveRole } = require('../utils/roles');
 
 const DEMON_WIN_OUTCOMES = new Set(['werewolf_time', 'werewolf_tokens', 'werewolf_seer', 'werewolf_vote']);
 const TOWNSFOLK_WIN_OUTCOMES = new Set(['villagers_word', 'villagers_vote']);
+const FALL_MOUSE_WIN_OUTCOMES = new Set(['fall_mouse_vote']);
 
 // ── Prepared statements ────────────────────────────────────────────────────────
 
@@ -74,15 +75,22 @@ const stmtGetGuild = db.prepare(`
 const recordGame = db.transaction((guildId, players, outcome, winnerGuesserUserId, seerVictimUserId) => {
   const demonWin = DEMON_WIN_OUTCOMES.has(outcome);
   const townsfolkWin = TOWNSFOLK_WIN_OUTCOMES.has(outcome);
+  const fallMouseWin = FALL_MOUSE_WIN_OUTCOMES.has(outcome);
 
   for (const player of players.values()) {
     // Ensure row exists.
     stmtUpsertPlayer.run({ guild_id: guildId, user_id: player.id, username: player.username });
+    const effectiveRole = getEffectiveRole(player);
 
-    const won = demonWin ? (isDemon(player) ? 1 : 0) : (townsfolkWin ? (isDemon(player) ? 0 : 1) : 0);
+    const won = demonWin
+      ? (isDemon(player) || player.isAccomplice ? 1 : 0)
+      : fallMouseWin
+        ? (effectiveRole === ROLES.SEER ? 1 : 0)
+        : townsfolkWin
+          ? (effectiveRole === ROLES.VILLAGER && !player.isAccomplice ? 1 : 0)
+          : 0;
     stmtIncrGame.run({ guild_id: guildId, user_id: player.id, won, lost: 1 - won });
 
-    const effectiveRole = getEffectiveRole(player);
     stmtIncrRole.run({
       guild_id:   guildId,
       user_id:    player.id,

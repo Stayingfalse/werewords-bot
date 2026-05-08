@@ -4,22 +4,7 @@ const { buildGuessComponents } = require('../game/phases/playing');
 /** Handle a message inside an active werewords playing-phase thread. */
 async function handleGameMessage(message, gameManager) {
   const game = gameManager.getGame(message.channel.id);
-  if (!game || game.phase !== 'playing' || !game.word) return;
-
-  // In voice mode guesses are called out verbally — don't process text messages as guesses.
-  if (game.sessionMode === 'voice') return;
-
-  const player = game.players.get(message.author.id);
-  if (!player || player.role === ROLES.MAYOR) return;
-
-  await message.channel.send({
-    content: `🎯 <@${message.author.id}> guesses: **"${message.content}"**`,
-    components: buildGuessComponents(message.author.id, game.tokens),
-  });
-
-  if (message.deletable) {
-    await message.delete().catch(() => {});
-  }
+  if (!game) return;
 }
 
 module.exports = {

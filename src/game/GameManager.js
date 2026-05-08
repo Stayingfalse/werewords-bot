@@ -23,7 +23,7 @@ class GameState {
     /** @type {'lobby'|'mode_select'|'starting'|'playing'|'voting'|'ended'} */
     this.phase = 'lobby';
 
-    /** @type {Map<string, {id: string, username: string, role: string|null, secretRole: string|null}>} */
+    /** @type {Map<string, {id: string, username: string, role: string|null, secretRole: string|null, dieValue: number|null, isAccomplice: boolean}>} */
     this.players = new Map(); // userId → player object
 
     this.word = null;
@@ -68,6 +68,13 @@ class GameState {
     this.winnerGuesserUserId = null;
     /** Set to true once the response-card stats embed has been posted (e.g. before voting). */
     this.responseStatsShown = false;
+
+    this.currentWakeNumber = 0;
+    this.phaseEndsAt = null;
+    this.cheeseStolen = false;
+    this.accompliceId = null;
+    this.stolenAtWake = null;
+    this.wakeTimeout = null;
   }
 }
 
@@ -121,6 +128,7 @@ class GameManager {
 
     if (game.timerInterval) clearInterval(game.timerInterval);
     if (game.revealTimeout) clearTimeout(game.revealTimeout);
+    if (game.wakeTimeout) clearTimeout(game.wakeTimeout);
     if (game.collector && !game.collector.ended) game.collector.stop('cleanup');
 
     GameRepository.remove(threadId);
@@ -155,6 +163,12 @@ class GameManager {
     game.winnerGuesserUserId = null;
     game.responseStatsShown = false;
     game.timeLeft = 240;
+    game.currentWakeNumber = 0;
+    game.phaseEndsAt = null;
+    game.cheeseStolen = false;
+    game.accompliceId = null;
+    game.stolenAtWake = null;
+    if (game.wakeTimeout) { clearTimeout(game.wakeTimeout); game.wakeTimeout = null; }
     // For same-group rematch keep the previously chosen mode; for open sign-ups ask again.
     if (openSignups) game.sessionMode = null;
     game.voicePlayerMessageIds = new Map();
@@ -163,6 +177,8 @@ class GameManager {
     for (const player of game.players.values()) {
       player.role = null;
       player.secretRole = null;
+      player.dieValue = null;
+      player.isAccomplice = false;
       player.responseStats = { yes: 0, no: 0, maybe: 0, soClose: 0, wayOff: 0 };
     }
 
@@ -185,6 +201,8 @@ class GameManager {
       username: user.username,
       role: null,
       secretRole: null,
+      dieValue: null,
+      isAccomplice: false,
       responseStats: { yes: 0, no: 0, maybe: 0, soClose: 0, wayOff: 0 },
     });
     GameRepository.upsert(game);

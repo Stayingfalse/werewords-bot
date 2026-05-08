@@ -34,6 +34,11 @@ db.exec(`
     votes                TEXT NOT NULL DEFAULT '{}',
     game_number          INTEGER NOT NULL DEFAULT 1,
     winner_guesser_user_id TEXT,
+    current_wake_number  INTEGER NOT NULL DEFAULT 0,
+    phase_ends_at        INTEGER,
+    cheese_stolen        INTEGER NOT NULL DEFAULT 0,
+    accomplice_id        TEXT,
+    stolen_at_wake       INTEGER,
     created_at           INTEGER NOT NULL
   );
 
@@ -125,6 +130,21 @@ if (!wwColumns.has('session_mode')) {
 }
 if (!wwColumns.has('voice_player_message_ids')) {
   db.exec('ALTER TABLE werewords_games ADD COLUMN voice_player_message_ids TEXT');
+}
+if (!wwColumns.has('current_wake_number')) {
+  db.exec('ALTER TABLE werewords_games ADD COLUMN current_wake_number INTEGER NOT NULL DEFAULT 0');
+}
+if (!wwColumns.has('phase_ends_at')) {
+  db.exec('ALTER TABLE werewords_games ADD COLUMN phase_ends_at INTEGER');
+}
+if (!wwColumns.has('cheese_stolen')) {
+  db.exec('ALTER TABLE werewords_games ADD COLUMN cheese_stolen INTEGER NOT NULL DEFAULT 0');
+}
+if (!wwColumns.has('accomplice_id')) {
+  db.exec('ALTER TABLE werewords_games ADD COLUMN accomplice_id TEXT');
+}
+if (!wwColumns.has('stolen_at_wake')) {
+  db.exec('ALTER TABLE werewords_games ADD COLUMN stolen_at_wake INTEGER');
 }
 
 // ── One-time migration: stats.json → werewords_player_stats ───────────────────
