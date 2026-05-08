@@ -478,7 +478,9 @@ module.exports = {
       const target = game.players.get(targetId);
       if (!target || target.id === user.id) return interaction.reply({ content: 'Invalid accomplice choice.', flags: MessageFlags.Ephemeral });
 
-      for (const p of game.players.values()) p.isAccomplice = false;
+      if (game.accompliceId && game.players.has(game.accompliceId)) {
+        game.players.get(game.accompliceId).isAccomplice = false;
+      }
       target.isAccomplice = true;
       game.accompliceId = target.id;
       return interaction.update({ content: `🤝 Accomplice selected: **${target.username}**.`, components: [] });
@@ -519,7 +521,6 @@ module.exports = {
       client.cheeseThiefManager.assignRoles(game.threadId);
       assignDiceValues(game);
       game.phase = 'playing';
-      game.thiefId = [...game.players.values()].find(p => p.role === CT_ROLES.THIEF)?.id ?? null;
       const msg = await thread.send({ embeds: [buildThreadReadyEmbed(game)], components: buildThreadControls() }).catch(() => null);
       if (msg) game.readyMessageId = msg.id;
       return interaction.reply({ content: '🔄 Rematch started. Check your secret info and ready up.', flags: MessageFlags.Ephemeral });
