@@ -274,7 +274,7 @@ async function tallyVotes(game, client) {
   const top = [...tally.entries()].filter(([, c]) => c === maxVotes).map(([id]) => id);
 
   if (top.length === 0) {
-    await endGame(game, client, 'werewolf_vote');
+    await endGame(game, client, 'thief_team_vote');
     return;
   }
 
@@ -287,7 +287,7 @@ async function tallyVotes(game, client) {
     await endGame(game, client, 'villagers_vote');
     return;
   }
-  await endGame(game, client, 'werewolf_vote');
+  await endGame(game, client, 'thief_team_vote');
 }
 
 async function handleLobbyButtons(interaction, client, game, threadId) {
@@ -427,7 +427,7 @@ module.exports = {
     if (customId === 'ct_end_game') {
       if (user.id !== game.hostId) return interaction.reply({ content: 'Only the host can end this game.', flags: MessageFlags.Ephemeral });
       await interaction.reply({ content: '🛑 Host ended the game.', flags: MessageFlags.Ephemeral });
-      await endGame(game, client, 'werewolf_vote');
+      await endGame(game, client, 'thief_team_vote');
       return;
     }
 
