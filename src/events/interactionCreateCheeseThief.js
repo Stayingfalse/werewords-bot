@@ -3,12 +3,24 @@ const { CT_ROLES } = require('../game/CheeseThiefManager');
 const { buildLobbyEmbed, buildLobbyComponents } = require('../commands/cheesethief');
 
 const WAKE_DURATION_MS = 15_000;
+const NIGHT_DELAY_MIN_MS = 5_000;
+const NIGHT_DELAY_MAX_MS = 10_000;
 const DISCUSSION_DURATION_MS = 3 * 60_000;
 const VOTE_DURATION_MS = 15_000;
 
 function persistGame(client, game) {
   if (!game) return;
   client.cheeseThiefManager?.saveGame(game.threadId);
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getNightDelayMs() {
+  const min = NIGHT_DELAY_MIN_MS;
+  const max = NIGHT_DELAY_MAX_MS;
+  return min + Math.floor(Math.random() * (max - min + 1));
 }
 
 function assignDiceValues(game) {
@@ -121,6 +133,50 @@ function buildWakeActionRows(game, awakePlayerIds) {
   return rows;
 }
 
+function ensureNightMessageTracking(game) {
+  if (!Array.isArray(game.nightMessageIds)) game.nightMessageIds = [];
+}
+
+async function sendTracked(thread, client, game, payload) {
+  ensureNightMessageTracking(game);
+  const msg = await thread.send(payload).catch(() => null);
+  if (msg) {
+    game.nightMessageIds.push(msg.id);
+    persistGame(client, game);
+  }
+  return msg;
+}
+
+async function deleteTrackedNightMessages(thread, game, client) {
+  ensureNightMessageTracking(game);
+  const ids = [...game.nightMessageIds];
+  game.nightMessageIds = [];
+  persistGame(client, game);
+
+  await Promise.all(ids.map(id => thread.messages.delete(id).catch(() => {})));
+}
+
+function scheduleWakeEnd(game, thread, client, wakeNumber, durationMs) {
+  if (game.wakeTimeout) { clearTimeout(game.wakeTimeout); game.wakeTimeout = null; }
+  game.phaseEndsAt = Date.now() + durationMs;
+  persistGame(client, game);
+
+  game.wakeTimeout = setTimeout(async () => {
+    if (game.phase !== 'playing') return;
+
+    // Advance immediately so old wake buttons can't be used during the between-night delay.
+    game.currentWakeNumber = wakeNumber + 1;
+    persistGame(client, game);
+
+    await sendTracked(thread, client, game, { content: `🔊 Night ${wakeNumber} close your eyes…`, tts: true });
+    await deleteTrackedNightMessages(thread, game, client);
+
+    await sleep(getNightDelayMs());
+    if (game.phase !== 'playing') return;
+    await runWakeStep(game, thread, client);
+  }, durationMs);
+}
+
 async function runWakeStep(game, thread, client) {
   if (game.phase !== 'playing') return;
 
@@ -129,22 +185,17 @@ async function runWakeStep(game, thread, client) {
     return;
   }
 
-  const awakeIds = getAwakePlayerIds(game, game.currentWakeNumber);
+  const wakeNumber = game.currentWakeNumber;
+  const awakeIds = getAwakePlayerIds(game, wakeNumber);
   const awakeMentions = awakeIds.length ? awakeIds.map(id => `<@${id}>`).join(', ') : '*No one*';
 
-  await thread.send({
-    content: `🌙 **Wake ${game.currentWakeNumber}**\nAwake now: ${awakeMentions}\n_Wake ends in 15 seconds._`,
+  await sendTracked(thread, client, game, { content: `🔊 Those waking Night ${wakeNumber} open your eyes…`, tts: true });
+  await sendTracked(thread, client, game, {
+    content: `🌙 **Wake ${wakeNumber}**\nAwake now: ${awakeMentions}\n_Wake ends in 15 seconds._`,
     components: buildWakeActionRows(game, awakeIds),
-  }).catch(() => {});
+  });
 
-  game.phaseEndsAt = Date.now() + WAKE_DURATION_MS;
-  persistGame(client, game);
-  game.wakeTimeout = setTimeout(async () => {
-    if (game.phase !== 'playing') return;
-    game.currentWakeNumber += 1;
-    persistGame(client, game);
-    await runWakeStep(game, thread, client);
-  }, WAKE_DURATION_MS);
+  scheduleWakeEnd(game, thread, client, wakeNumber, WAKE_DURATION_MS);
 }
 
 async function maybeStartWake(game, client) {
@@ -153,9 +204,12 @@ async function maybeStartWake(game, client) {
   const thread = await client.channels.fetch(game.threadId).catch(() => null);
   if (!thread) return;
 
+  game.nightMessageIds = [];
   game.currentWakeNumber = 1;
   persistGame(client, game);
-  await thread.send({ content: '🌙 All players are ready — wake sequence starting now.' }).catch(() => {});
+  ensureNightMessageTracking(game);
+  await sendTracked(thread, client, game, { content: '🔊 Everyone close your eyes and go to sleep.', tts: true });
+  await sleep(getNightDelayMs());
   await runWakeStep(game, thread, client);
 }
 
@@ -345,6 +399,7 @@ async function handleLobbyButtons(interaction, client, game, threadId) {
     game.cheeseStolen = false;
     game.accompliceId = null;
     game.stolenAtWake = null;
+    game.nightMessageIds = [];
     persistGame(client, game);
 
     await interaction.deferUpdate();
@@ -411,22 +466,18 @@ async function resumeCheeseThiefGame(game, client) {
       return true;
     }
 
+    game.nightMessageIds = [];
     const awakeIds = getAwakePlayerIds(game, game.currentWakeNumber);
     const awakeMentions = awakeIds.length ? awakeIds.map(id => `<@${id}>`).join(', ') : '*No one*';
     const remainingSeconds = Math.max(1, Math.ceil(remaining / 1000));
-    await thread.send({
+
+    await sendTracked(thread, client, game, { content: `🔊 Those waking Night ${game.currentWakeNumber} open your eyes…`, tts: true });
+    await sendTracked(thread, client, game, {
       content: `🌙 **Wake ${game.currentWakeNumber} (resumed)**\nAwake now: ${awakeMentions}\n_Wake ends in ${remainingSeconds} seconds._`,
       components: buildWakeActionRows(game, awakeIds),
-    }).catch(() => {});
+    });
 
-    if (game.wakeTimeout) clearTimeout(game.wakeTimeout);
-    game.wakeTimeout = setTimeout(async () => {
-      if (game.phase !== 'playing') return;
-      game.currentWakeNumber += 1;
-      persistGame(client, game);
-      await runWakeStep(game, thread, client);
-    }, remaining);
-    persistGame(client, game);
+    scheduleWakeEnd(game, thread, client, game.currentWakeNumber, remaining);
     return true;
   }
 
