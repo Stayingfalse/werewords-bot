@@ -42,7 +42,11 @@ function startGameTimer(game, thread, client) {
 
     if (game.timeLeft <= 0) {
       game.timeLeft = 0;
-      await startVotingPhase(game, client);
+      try {
+        await startVotingPhase(game, client);
+      } catch (err) {
+        console.error('[Timer] startVotingPhase error:', err);
+      }
       return;
     }
 

@@ -13,6 +13,15 @@ const WavelengthManager = require('./game/WavelengthManager');
 const BirthdayManager = require('./game/BirthdayManager');
 const SassyManager = require('./game/SassyManager');
 
+// ── Process-level crash guards ─────────────────────────────────────────────
+// Prevent Node from exiting on unhandled async errors or synchronous throws.
+process.on('uncaughtException', (err) => {
+  console.error('[Uncaught Exception]', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[Unhandled Rejection]', reason);
+});
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -20,6 +29,12 @@ const client = new Client({
     GatewayIntentBits.MessageContent, // Privileged — enable in Discord Dev Portal → Bot → Privileged Gateway Intents
     GatewayIntentBits.GuildMembers,   // Required by SassyManager when SASSY_ENABLED=true
   ],
+});
+
+// ── Discord client error guard ─────────────────────────────────────────────
+// Catches connection-level errors emitted by the discord.js client.
+client.on('error', (err) => {
+  console.error('[Discord Client Error]', err);
 });
 
 client.commands = new Collection();
@@ -52,7 +67,10 @@ const eventsPath = path.join(__dirname, 'events');
 for (const file of fs.readdirSync(eventsPath).filter(f => f.endsWith('.js'))) {
   const event = require(path.join(eventsPath, file));
   // Append the client instance so every event handler can access it.
-  const handler = (...args) => event.execute(...args, client);
+  // Wrap in a catch so errors from any event handler never crash the process.
+  const handler = (...args) => Promise.resolve(event.execute(...args, client)).catch((err) => {
+    console.error(`[Event handler error: ${event.name}]`, err);
+  });
   if (event.once) {
     client.once(event.name, handler);
   } else {

@@ -143,8 +143,12 @@ async function startVotingPhase(game, client) {
 
   // Auto-tally when the window expires.
   game.revealTimeout = setTimeout(async () => {
-    if (game.phase !== 'voting') return;
-    await tallyVotes(game, client);
+    try {
+      if (game.phase !== 'voting') return;
+      await tallyVotes(game, client);
+    } catch (err) {
+      console.error('[Voting] Auto-tally timer error:', err);
+    }
   }, VOTE_DURATION);
 }
 

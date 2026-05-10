@@ -190,60 +190,71 @@ module.exports = {
       }
 
       if (modalId === 'ww_word_modal') {
-        const game = client.gameManager.getGame(channelId);
+        try {
+          const game = client.gameManager.getGame(channelId);
 
-        if (!game || game.phase !== 'playing') {
-          return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
-        }
+          if (!game || game.phase !== 'playing') {
+            return interaction.reply({ content: 'There is no active game.', flags: MessageFlags.Ephemeral });
+          }
 
-        const player = game.players.get(user.id);
-        if (!player || player.role !== ROLES.MAYOR) {
-          return interaction.reply({ content: 'Only the Mayor can pick the secret word.', flags: MessageFlags.Ephemeral });
-        }
+          const player = game.players.get(user.id);
+          if (!player || player.role !== ROLES.MAYOR) {
+            return interaction.reply({ content: 'Only the Mayor can pick the secret word.', flags: MessageFlags.Ephemeral });
+          }
 
-        if (game.word) {
-          return interaction.reply({
-            content: `✅ The secret word is already set to: **${game.word}**`,
+          if (game.word) {
+            return interaction.reply({
+              content: `✅ The secret word is already set to: **${game.word}**`,
+              flags: MessageFlags.Ephemeral,
+            });
+          }
+
+          const raw = interaction.fields.getTextInputValue('ww_word_input');
+          const chosen = raw.trim();
+          if (!chosen) {
+            return interaction.reply({ content: 'The secret word cannot be blank.', flags: MessageFlags.Ephemeral });
+          }
+
+          game.word = chosen;
+          game.readyPlayers.add(user.id);
+
+          await interaction.reply({
+            content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}${getWordsmithSecretRoleText(player)}\n\n✅ You chose the secret word: **${game.word}**`,
+            components: [],
             flags: MessageFlags.Ephemeral,
           });
+
+          // Resolve all pending Werewolf/Seer interactions.
+          for (const pending of game.pendingSecretInteractions) {
+            const pendingPlayer = game.players.get(pending.user.id);
+            if (!pendingPlayer) continue;
+            const { content } = buildSecretContent(pendingPlayer, game.word);
+            const pendingReadyComponents = game.readyPlayers.has(pendingPlayer.id) ? [] : buildReadyComponents();
+            await pending.editReply({ content, components: pendingReadyComponents }).catch(() => {});
+          }
+          game.pendingSecretInteractions = [];
+
+          // In voice mode, create per-player response panels now that the word is set.
+          if (game.sessionMode === 'voice') {
+            const thread = await client.channels.fetch(game.threadId).catch(() => null);
+            if (thread) await createVoicePlayerPanels(game, thread);
+          }
+
+          await updateReadyEmbed(game, client);
+          await maybeStartTimer(game, client);
+        } catch (error) {
+          console.error('[Werewords modal error]', error);
+          const payload = { content: '❌ Something went wrong — please try again.', flags: MessageFlags.Ephemeral };
+          if (interaction.replied || interaction.deferred) {
+            await interaction.followUp(payload).catch(() => {});
+          } else {
+            await interaction.reply(payload).catch(() => {});
+          }
         }
-
-        const raw = interaction.fields.getTextInputValue('ww_word_input');
-        const chosen = raw.trim();
-        if (!chosen) {
-          return interaction.reply({ content: 'The secret word cannot be blank.', flags: MessageFlags.Ephemeral });
-        }
-
-        game.word = chosen;
-        game.readyPlayers.add(user.id);
-
-        await interaction.reply({
-          content: `${ROLE_DESCRIPTIONS[ROLES.MAYOR]}${getWordsmithSecretRoleText(player)}\n\n✅ You chose the secret word: **${game.word}**`,
-          components: [],
-          flags: MessageFlags.Ephemeral,
-        });
-
-        // Resolve all pending Werewolf/Seer interactions.
-        for (const pending of game.pendingSecretInteractions) {
-          const pendingPlayer = game.players.get(pending.user.id);
-          if (!pendingPlayer) continue;
-          const { content } = buildSecretContent(pendingPlayer, game.word);
-          const pendingReadyComponents = game.readyPlayers.has(pendingPlayer.id) ? [] : buildReadyComponents();
-          await pending.editReply({ content, components: pendingReadyComponents }).catch(() => {});
-        }
-        game.pendingSecretInteractions = [];
-
-        // In voice mode, create per-player response panels now that the word is set.
-        if (game.sessionMode === 'voice') {
-          const thread = await client.channels.fetch(game.threadId).catch(() => null);
-          if (thread) await createVoicePlayerPanels(game, thread);
-        }
-
-        await updateReadyEmbed(game, client);
-        await maybeStartTimer(game, client);
+        return;
       }
-      return;
-    }
+
+    }  // end isModalSubmit
 
     // ── Button interactions ──────────────────────────────────────────────────
     if (!interaction.isButton()) return;
@@ -269,6 +280,9 @@ module.exports = {
 
     // Ignore buttons that don't belong to this bot.
     if (!customId.startsWith('ww_')) return;
+
+    // ── Werewords button dispatch (catch-all protects against permission errors) ──
+    try {
 
     // ── Lobby buttons (fired from the main channel; threadId encoded in customId) ──
     // Format: ww_join_{threadId} | ww_leave_{threadId} | ww_start_{threadId}
@@ -1013,13 +1027,17 @@ module.exports = {
 
       // Start the 20 s Seer-guess countdown.
       game.revealTimeout = setTimeout(async () => {
-        if (game.phase !== 'reveal') return;
-        // Time ran out without a pick → Townsfolk win.
-        const thread = await client.channels.fetch(game.threadId).catch(() => null);
-        if (thread) {
-          await thread.send({ content: '⏰ The Werewolf ran out of time to identify the Seer — **Townsfolk win!**' }).catch(() => {});
+        try {
+          if (game.phase !== 'reveal') return;
+          // Time ran out without a pick → Townsfolk win.
+          const thread = await client.channels.fetch(game.threadId).catch(() => null);
+          if (thread) {
+            await thread.send({ content: '⏰ The Werewolf ran out of time to identify the Seer — **Townsfolk win!**' }).catch(() => {});
+          }
+          await endGame(game, client, 'villagers_word');
+        } catch (err) {
+          console.error('[Werewords] Seer-reveal timeout error:', err);
         }
-        await endGame(game, client, 'villagers_word');
       }, 20_000);
 
       return;
@@ -1245,6 +1263,16 @@ module.exports = {
 
       client.gameManager.deleteGame(game.threadId);
       return;
+    }
+
+    } catch (error) {
+      console.error('[Werewords button error]', error);
+      const payload = { content: '❌ Something went wrong — please try again.', flags: MessageFlags.Ephemeral };
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp(payload).catch(() => {});
+      } else {
+        await interaction.reply(payload).catch(() => {});
+      }
     }
   },
 };
