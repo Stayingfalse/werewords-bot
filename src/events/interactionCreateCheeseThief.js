@@ -689,6 +689,8 @@ module.exports = {
 
     if (customId === 'ct_close_session') {
       if (user.id !== game.hostId) return interaction.reply({ content: 'Only the host can close the session.', flags: MessageFlags.Ephemeral });
+      const acknowledged = await interaction.deferReply({ flags: MessageFlags.Ephemeral }).then(() => true).catch(() => false);
+      if (!acknowledged) return;
       const thread = await client.channels.fetch(game.threadId).catch(() => null);
       if (thread) {
         await thread.send({ content: '🔒 Session closed. Archiving thread.' }).catch(() => {});
@@ -696,7 +698,7 @@ module.exports = {
         await thread.setArchived(true).catch(() => {});
       }
       client.cheeseThiefManager.deleteGame(game.threadId);
-      return interaction.reply({ content: '✅ Session closed.', flags: MessageFlags.Ephemeral });
+      return interaction.editReply({ content: '✅ Session closed.' }).catch(() => {});
     }
   },
 };
