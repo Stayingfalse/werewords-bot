@@ -10,6 +10,7 @@ const path = require('path');
 const GameManager = require('./game/GameManager');
 const { CheeseThiefManager } = require('./game/CheeseThiefManager');
 const WavelengthManager = require('./game/WavelengthManager');
+const HerdMentalityManager = require('./game/HerdMentalityManager');
 const BirthdayManager = require('./game/BirthdayManager');
 const SassyManager = require('./game/SassyManager');
 
@@ -41,6 +42,7 @@ client.commands = new Collection();
 client.gameManager = new GameManager();
 client.cheeseThiefManager = new CheeseThiefManager();
 client.wavelengthManager = new WavelengthManager();
+client.herdMentalityManager = new HerdMentalityManager();
 client.birthdayManager = new BirthdayManager();
 
 // Conditionally initialise SassyBot AI features.
