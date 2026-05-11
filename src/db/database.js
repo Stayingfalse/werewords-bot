@@ -81,6 +81,27 @@ db.exec(`
     created_at           INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS herd_mentality_games (
+    thread_id            TEXT PRIMARY KEY,
+    guild_id             TEXT NOT NULL,
+    channel_id           TEXT NOT NULL,
+    host_id              TEXT NOT NULL,
+    host_username        TEXT NOT NULL,
+    message_id           TEXT,
+    question_message_id  TEXT,
+    phase                TEXT NOT NULL DEFAULT 'lobby',
+    players              TEXT NOT NULL DEFAULT '[]',
+    answers              TEXT NOT NULL DEFAULT '{}',
+    current_question     TEXT,
+    round_number         INTEGER NOT NULL DEFAULT 0,
+    pink_cow_holder_id   TEXT,
+    target_score         INTEGER NOT NULL DEFAULT 8,
+    used_questions       TEXT NOT NULL DEFAULT '[]',
+    phase_ends_at        INTEGER,
+    game_number          INTEGER NOT NULL DEFAULT 1,
+    created_at           INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS werewords_player_stats (
     guild_id                  TEXT NOT NULL,
     user_id                   TEXT NOT NULL,
@@ -147,6 +168,11 @@ if (!wwColumns.has('session_mode')) {
 }
 if (!wwColumns.has('voice_player_message_ids')) {
   db.exec('ALTER TABLE werewords_games ADD COLUMN voice_player_message_ids TEXT');
+}
+
+const hmColumns = new Set(db.prepare('PRAGMA table_info(herd_mentality_games)').all().map(col => col.name));
+if (!hmColumns.has('review_groups')) {
+  db.exec('ALTER TABLE herd_mentality_games ADD COLUMN review_groups TEXT');
 }
 
 // ── One-time migration: stats.json → werewords_player_stats ───────────────────
