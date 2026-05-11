@@ -19,8 +19,6 @@
 //  POST /tools/update_topic_notes              Update user topic notes
 // ============================================================
 
-'use strict';
-
 const http = require('http');
 
 const CAPABILITIES = {
@@ -105,7 +103,7 @@ class McpServer {
 
   async _route(method, path, url, req) {
     // ── GET / ─────────────────────────────────────────────────────────────────
-    if (method === 'GET' && path === '') return CAPABILITIES;
+    if (method === 'GET' && path === '/') return CAPABILITIES;
 
     // ── GET /resources/users/:guildId/:userId ─────────────────────────────────
     let m = path.match(/^\/resources\/users\/([^/]+)\/([^/]+)$/);

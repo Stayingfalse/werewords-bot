@@ -106,7 +106,7 @@ class SassyManager {
     this._ai          = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     this._contextRepo = contextRepo;
 
-    // Alternating provider counter (even = Gemini, odd = DeepSeek).
+    // Alternating provider counter. Odd counts → Gemini, even counts → DeepSeek.
     this._aiCallCount = 0;
 
     this._directCooldowns    = new Map();
