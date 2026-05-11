@@ -60,6 +60,7 @@ async function restoreCheeseThief(client, CheeseThiefRepository) {
       playerLogs: new Map(),
       discussionReadyPlayers: new Set(),
       wakeTimeout: null,
+      accompliceTimeout: null,
       revealTimeout: null,
       gameNumber: row.game_number ?? 1,
       _createdAt: row.created_at,

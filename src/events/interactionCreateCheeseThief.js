@@ -7,7 +7,7 @@ const NIGHT_DELAY_MIN_MS = 5_000;
 const NIGHT_DELAY_MAX_MS = 10_000;
 const DISCUSSION_DURATION_MS = 3 * 60_000;
 const VOTE_DURATION_MS = 15_000;
-const ACCOMPLICE_TIMEOUT_MS = 60_000; // 1 min for thief to pick accomplice after all 6 nights
+const ACCOMPLICE_SELECTION_DURATION_MS = 60_000; // 1 min for thief to pick accomplice after all 6 nights
 
 function persistGame(client, game) {
   if (!game) return;
@@ -148,7 +148,7 @@ function buildEphemeralWakeComponents(game, playerId, awakeIds) {
 function buildWakePayload(game, player, awakeIds, wakeNumber) {
   const others = awakeIds.filter(id => id !== player.id);
   const whoElse = others.length > 0
-    ? `${others.map(id => `<@${id}>`).join(', ')} is also awake.`
+    ? `${others.map(id => `<@${id}>`).join(', ')} ${others.length === 1 ? 'is' : 'are'} also awake.`
     : "You're the only one awake this hour.";
   const cheeseStatus = game.cheeseStolen
     ? `🧀 The cheese is **gone** (stolen at wake ${game.stolenAtWake ?? '?'}).`
@@ -365,17 +365,19 @@ async function startAccomplicePhase(game, thread, client) {
   }
 
   // Auto-advance to discussion if thief doesn't pick in time
-  if (game.wakeTimeout) clearTimeout(game.wakeTimeout);
-  game.wakeTimeout = setTimeout(async () => {
+  if (game.accompliceTimeout) clearTimeout(game.accompliceTimeout);
+  game.accompliceTimeout = setTimeout(async () => {
     if (game.phase !== 'accomplice') return;
+    game.accompliceTimeout = null;
     await startDiscussion(game, thread, client);
-  }, ACCOMPLICE_TIMEOUT_MS);
+  }, ACCOMPLICE_SELECTION_DURATION_MS);
 }
 
 // ── Discussion phase ───────────────────────────────────────────────────────────
 
 async function startDiscussion(game, thread, client) {
-  if (game.wakeTimeout) { clearTimeout(game.wakeTimeout); game.wakeTimeout = null; }
+  if (game.wakeTimeout)      { clearTimeout(game.wakeTimeout);      game.wakeTimeout      = null; }
+  if (game.accompliceTimeout){ clearTimeout(game.accompliceTimeout); game.accompliceTimeout = null; }
   game.phase       = 'discussion';
   game.phaseEndsAt = Date.now() + DISCUSSION_DURATION_MS;
   ensureDiscussionReady(game);
@@ -471,8 +473,9 @@ function buildWinners(game, outcome) {
 
 async function endGame(game, client, outcome) {
   if (game.phase === 'ended') return;
-  if (game.wakeTimeout) { clearTimeout(game.wakeTimeout); game.wakeTimeout = null; }
-  if (game.revealTimeout) { clearTimeout(game.revealTimeout); game.revealTimeout = null; }
+  if (game.wakeTimeout)      { clearTimeout(game.wakeTimeout);      game.wakeTimeout      = null; }
+  if (game.accompliceTimeout){ clearTimeout(game.accompliceTimeout); game.accompliceTimeout = null; }
+  if (game.revealTimeout)    { clearTimeout(game.revealTimeout);    game.revealTimeout    = null; }
   game.phase = 'ended';
   persistGame(client, game);
 
@@ -681,11 +684,12 @@ async function resumeCheeseThiefGame(game, client) {
 
   if (game.phase === 'accomplice') {
     await thread.send({ content: '🤝 The Cheese Thief is choosing their accomplice… (resumed)' }).catch(() => {});
-    if (game.wakeTimeout) clearTimeout(game.wakeTimeout);
-    game.wakeTimeout = setTimeout(async () => {
+    if (game.accompliceTimeout) clearTimeout(game.accompliceTimeout);
+    game.accompliceTimeout = setTimeout(async () => {
       if (game.phase !== 'accomplice') return;
+      game.accompliceTimeout = null;
       await startDiscussion(game, thread, client);
-    }, ACCOMPLICE_TIMEOUT_MS);
+    }, ACCOMPLICE_SELECTION_DURATION_MS);
     return true;
   }
 

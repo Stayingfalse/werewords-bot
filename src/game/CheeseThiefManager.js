@@ -28,6 +28,7 @@ class CheeseThiefGameState {
     this.discussionReadyPlayers = new Set();
 
     this.wakeTimeout = null;
+    this.accompliceTimeout = null;
     this.revealTimeout = null;
     this.gameNumber = 1;
   }
@@ -81,8 +82,9 @@ class CheeseThiefManager {
   deleteGame(threadId) {
     const game = this.games.get(threadId);
     if (!game) return false;
-    if (game.wakeTimeout) clearTimeout(game.wakeTimeout);
-    if (game.revealTimeout) clearTimeout(game.revealTimeout);
+    if (game.wakeTimeout)       clearTimeout(game.wakeTimeout);
+    if (game.accompliceTimeout) clearTimeout(game.accompliceTimeout);
+    if (game.revealTimeout)     clearTimeout(game.revealTimeout);
     CheeseThiefRepository.remove(threadId);
     this.games.delete(threadId);
     return true;
@@ -126,8 +128,9 @@ class CheeseThiefManager {
     const game = this.games.get(threadId);
     if (!game) return null;
 
-    if (game.wakeTimeout) { clearTimeout(game.wakeTimeout); game.wakeTimeout = null; }
-    if (game.revealTimeout) { clearTimeout(game.revealTimeout); game.revealTimeout = null; }
+    if (game.wakeTimeout)       { clearTimeout(game.wakeTimeout);       game.wakeTimeout       = null; }
+    if (game.accompliceTimeout) { clearTimeout(game.accompliceTimeout); game.accompliceTimeout = null; }
+    if (game.revealTimeout)     { clearTimeout(game.revealTimeout);     game.revealTimeout     = null; }
 
     game.gameNumber += 1;
     game.phase = openSignups ? 'lobby' : 'playing';
