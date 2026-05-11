@@ -80,6 +80,19 @@ const stmtSaveHistory = db.prepare(`
     updated_at = excluded.updated_at
 `);
 
+const stmtGetChannelProfile = db.prepare(`
+  SELECT * FROM sassy_channel_profiles WHERE channel_id = ?
+`);
+
+const stmtUpsertChannelProfile = db.prepare(`
+  INSERT INTO sassy_channel_profiles (channel_id, guild_id, topic_notes, updated_at)
+  VALUES (@channel_id, @guild_id, @topic_notes, @now)
+  ON CONFLICT(channel_id) DO UPDATE SET
+    guild_id    = excluded.guild_id,
+    topic_notes = excluded.topic_notes,
+    updated_at  = excluded.updated_at
+`);
+
 const stmtWWScoreboard = db.prepare(`
   SELECT user_id, username, games_played, wins, losses,
          CASE WHEN games_played > 0 THEN ROUND(100.0 * wins / games_played, 1) ELSE 0 END AS win_pct
@@ -179,6 +192,62 @@ class ContextRepository {
    */
   getWavelengthScoreboard(guildId) {
     return stmtWLScoreboard.all(guildId);
+  }
+
+  /**
+   * Log a message sent by the bot itself (no user profile upsert).
+   *
+   * @param {string} channelId
+   * @param {string|null} guildId
+   * @param {string} username  Display name for the bot
+   * @param {string} content
+   */
+  logBotMessage(channelId, guildId, username, content) {
+    stmtLogConv.run({
+      channel_id: channelId,
+      guild_id:   guildId ?? null,
+      user_id:    'sassybot',
+      username,
+      content,
+      timestamp:  Date.now(),
+    });
+  }
+
+  /**
+   * Get stored profile for a channel.
+   *
+   * @param {string} channelId
+   * @returns {object|null}
+   */
+  getChannelProfile(channelId) {
+    return stmtGetChannelProfile.get(channelId) ?? null;
+  }
+
+  /**
+   * Overwrite the topic_notes field for a channel (AI-generated summary).
+   *
+   * @param {string} channelId
+   * @param {string|null} guildId
+   * @param {string} notes
+   */
+  updateChannelTopicNotes(channelId, guildId, notes) {
+    stmtUpsertChannelProfile.run({
+      channel_id:  channelId,
+      guild_id:    guildId ?? null,
+      topic_notes: notes,
+      now:         Date.now(),
+    });
+  }
+
+  /**
+   * Return stored topic notes for a channel, or null if none have been
+   * generated yet.
+   *
+   * @param {string} channelId
+   * @returns {string|null}
+   */
+  buildChannelContextString(channelId) {
+    return this.getChannelProfile(channelId)?.topic_notes ?? null;
   }
 
   /**

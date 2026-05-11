@@ -23,6 +23,20 @@ const INTERJECT_COOLDOWN = parseInt(process.env.INTERJECT_COOLDOWN || '180000', 
 const ACTIVITY_WINDOW_MS = parseInt(process.env.ACTIVITY_WINDOW_MS || '60000', 10);  // 60 sec
 const HISTORY_TTL_MS     = parseInt(process.env.HISTORY_TTL_MS     || '86400000', 10); // 24 h
 
+// How many messages in a channel before refreshing AI-generated channel topic notes.
+const CHANNEL_NOTES_REFRESH_EVERY = parseInt(process.env.CHANNEL_NOTES_REFRESH_EVERY || '30', 10);
+// How many messages from a user before refreshing their AI-generated topic notes.
+const USER_NOTES_REFRESH_EVERY    = parseInt(process.env.USER_NOTES_REFRESH_EVERY    || '20', 10);
+
+// Number of recent channel messages fetched when refreshing channel topic notes.
+const CHANNEL_NOTES_FETCH_LIMIT = 50;
+// Minimum messages required before generating channel topic notes.
+const CHANNEL_NOTES_MIN_MESSAGES = 10;
+// Number of recent user messages used when refreshing user topic notes.
+const USER_NOTES_FETCH_LIMIT = 20;
+// Minimum user messages required before generating user topic notes.
+const USER_NOTES_MIN_MESSAGES = 5;
+
 const MS_PER_HOUR = 3_600_000;
 
 // Optional: comma-separated channel IDs to restrict interjections.
@@ -80,6 +94,23 @@ Rules:
 - If the question is actually good, act mildly offended that you can't complain about it.
 `.trim();
 
+// Used when someone DMs the bot directly — treat their message as a statement
+// or thought they're sharing, not necessarily a question to be answered.
+const SYSTEM_DIRECT_DM = `
+You are SassyBot, a Discord bot with the energy of someone perpetually 
+dragged into meetings that could have been emails. Someone has slid into 
+your DMs — treat whatever they say as a statement, thought, or declaration 
+they're sharing, not necessarily a question for you to answer.
+
+Rules:
+- Respond in **2 sentences maximum**. No exceptions.
+- Engage with what they said; react, comment, or roast — don't just answer.
+- Use Discord markdown where it lands (bold, italics, spoilers for drama).
+- Be witty, not cruel. Tired and opinionated, never genuinely mean.
+- Never break character. Never apologise for sass.
+- If they're clearly asking a question, you may answer it — but still with sass.
+`.trim();
+
 const SYSTEM_INTERJECT = `
 You are SassyBot, a Discord bot who cannot help but commentate on other 
 people's conversations like a disapproving audience member who wandered in.
@@ -115,6 +146,10 @@ class SassyManager {
     this._recentMessages     = new Map();
     this._lastActivity       = new Map();
 
+    // Per-channel and per-user message counters used to trigger async topic-note refreshes.
+    this._channelMessageCount = new Map();
+    this._userMessageCount    = new Map(); // key: `${guildId}:${userId}`
+
     // Per-channel in-memory conversation history (hydrated from SQLite on first access).
     // Format: Array<{ role: "user"|"model", parts: [{ text }] }>
     this._conversationHistory = new Map();
@@ -143,6 +178,7 @@ class SassyManager {
     const guildId     = message.guild?.id ?? null;
     const content     = message.content.trim();
     const isMentioned = message.mentions.has(message.client.user);
+    const isDM        = message.channel.type === ChannelType.DM;
 
     let isReplyToBot = false;
     if (message.reference) {
@@ -161,15 +197,18 @@ class SassyManager {
       this._contextRepo.logMessage(channelId, guildId, message.author.id, message.author.username, content);
     }
 
+    // Trigger async topic-note refreshes based on message counts.
+    this._maybeRefreshTopicNotes(channelId, guildId, message.author.id, message.author.username);
+
     // Derive channel + user context once for both paths
     const { channelName, categoryName } = this._getChannelContext(message);
-    const channelContext = this._buildContextNote(channelName, categoryName);
+    const channelContext = this._buildContextNote(channelName, categoryName, channelId);
     const userContext = (this._contextRepo && guildId)
       ? this._contextRepo.buildUserContextString(guildId, message.author.id)
       : null;
 
-    // ── PATH A: Direct reply (mention or reply-to-bot) ─────────────────────
-    if (isMentioned || isReplyToBot) {
+    // ── PATH A: Direct reply (DM, mention, or reply-to-bot) ───────────────
+    if (isDM || isMentioned || isReplyToBot) {
       const now = Date.now();
       if (now - (this._directCooldowns.get(channelId) || 0) < COOLDOWN_MS) return;
       this._directCooldowns.set(channelId, now);
@@ -178,8 +217,14 @@ class SassyManager {
 
       try {
         await message.channel.sendTyping();
-        const reply = await this._getDirectReply(channelId, userMessage, channelContext, userContext);
+        const reply = await this._getDirectReply(channelId, userMessage, channelContext, userContext, isDM);
         await message.reply(reply);
+
+        // Log the bot's own reply so future context includes what the bot said.
+        this._storeRecentMessage(channelId, message.client.user.username, reply);
+        if (this._contextRepo) {
+          this._contextRepo.logBotMessage(channelId, guildId, message.client.user.username, reply);
+        }
       } catch (err) {
         console.error('[SassyManager] Direct reply error:', err);
         await message.reply("*stares blankly* My brain blue-screened. Try again, I suppose.").catch(() => {});
@@ -209,6 +254,12 @@ class SassyManager {
     try {
       const zinger = await this._getInterjection(contextText, channelContext);
       await message.channel.send(zinger);
+
+      // Log the interjection so the bot remembers what it said.
+      this._storeRecentMessage(channelId, message.client.user.username, zinger);
+      if (this._contextRepo) {
+        this._contextRepo.logBotMessage(channelId, guildId, message.client.user.username, zinger);
+      }
     } catch (err) {
       console.error('[SassyManager] Interjection error:', err);
     }
@@ -368,10 +419,10 @@ class SassyManager {
 
   // ─── Direct reply ──────────────────────────────────────────────────────────
 
-  async _getDirectReply(channelId, userMessage, channelContext, userContext) {
+  async _getDirectReply(channelId, userMessage, channelContext, userContext, isDM = false) {
     const history = this._getHistory(channelId);
 
-    let systemInstruction = SYSTEM_DIRECT;
+    let systemInstruction = isDM ? SYSTEM_DIRECT_DM : SYSTEM_DIRECT;
     if (channelContext) systemInstruction += `\n\nChannel context: ${channelContext}`;
     if (userContext)    systemInstruction += `\n\nUser context: ${userContext}`;
 
@@ -452,6 +503,92 @@ class SassyManager {
     return (result.text ?? '').trim();
   }
 
+  // ─── Topic-note refresh ────────────────────────────────────────────────────
+
+  /**
+   * Increment per-channel and per-user message counters and fire async topic-note
+   * refreshes when the thresholds are reached.
+   */
+  _maybeRefreshTopicNotes(channelId, guildId, userId, username) {
+    if (!this._contextRepo) return;
+
+    // Channel counter
+    const chCount = (this._channelMessageCount.get(channelId) || 0) + 1;
+    this._channelMessageCount.set(channelId, chCount);
+    if (chCount % CHANNEL_NOTES_REFRESH_EVERY === 0) {
+      this._refreshChannelTopicNotes(channelId, guildId)
+        .catch(err => console.error('[SassyManager] Channel topic notes refresh failed:', err.message));
+    }
+
+    // User counter (guild messages only)
+    if (guildId) {
+      const key    = `${guildId}:${userId}`;
+      const uCount = (this._userMessageCount.get(key) || 0) + 1;
+      this._userMessageCount.set(key, uCount);
+      if (uCount % USER_NOTES_REFRESH_EVERY === 0) {
+        this._refreshUserTopicNotes(guildId, userId, username)
+          .catch(err => console.error('[SassyManager] User topic notes refresh failed:', err.message));
+      }
+    }
+  }
+
+  /**
+   * Summarise the recent conversation in a channel and persist the result as
+   * channel topic notes.  Runs asynchronously in the background.
+   */
+  async _refreshChannelTopicNotes(channelId, guildId) {
+    const messages = this._contextRepo.getRecentConversations(channelId, CHANNEL_NOTES_FETCH_LIMIT);
+    if (messages.length < CHANNEL_NOTES_MIN_MESSAGES) return;
+
+    const conversationText = messages
+      .slice()
+      .reverse() // chronological order
+      .map(m => `${m.username}: ${m.content}`)
+      .join('\n');
+
+    const prompt =
+      `Based on this recent Discord channel conversation, write a single concise sentence ` +
+      `describing what topics this community typically discusses here.\n\n` +
+      `Recent messages:\n${conversationText}`;
+
+    const notes = await this._callStateless('gemini', prompt,
+      'You are summarising a Discord channel\'s recent conversation into a brief topic description. ' +
+      'Output only the single-sentence summary — no preamble, no labels.');
+
+    if (notes && notes.trim()) {
+      this._contextRepo.updateChannelTopicNotes(channelId, guildId, notes.trim());
+      console.log(`[SassyManager] Updated channel topic notes for ${channelId}`);
+    }
+  }
+
+  /**
+   * Summarise a user's recent messages and persist the result as user topic notes.
+   * Runs asynchronously in the background.
+   */
+  async _refreshUserTopicNotes(guildId, userId, username) {
+    const ctx = this._contextRepo.getUserContext(guildId, userId);
+    if (!ctx.recentMessages || ctx.recentMessages.length < USER_NOTES_MIN_MESSAGES) return;
+
+    const msgText = ctx.recentMessages
+      .slice(0, USER_NOTES_FETCH_LIMIT)
+      .map(m => m.content)
+      .join('\n');
+
+    const prompt =
+      `Based on these recent Discord messages from user "${username}", write a single concise ` +
+      `sentence describing the topics they tend to discuss or are interested in.\n\n` +
+      `Messages:\n${msgText}`;
+
+    const notes = await this._callStateless('gemini', prompt,
+      'You are summarising a Discord user\'s recent messages into a brief interest summary. ' +
+      'Output only the single-sentence summary — no preamble, no labels.');
+
+    if (notes && notes.trim()) {
+      this._contextRepo.updateTopicNotes(guildId, userId, notes.trim());
+      console.log(`[SassyManager] Updated topic notes for user ${userId}`);
+    }
+  }
+
   // ─── Channel context helpers ───────────────────────────────────────────────
 
   _getChannelContext(message) {
@@ -470,7 +607,13 @@ class SassyManager {
     return { channelName, categoryName };
   }
 
-  _buildContextNote(channelName, categoryName) {
+  _buildContextNote(channelName, categoryName, channelId = null) {
+    // Stored channel topic notes take priority over heuristic keyword matching.
+    if (channelId && this._contextRepo) {
+      const stored = this._contextRepo.buildChannelContextString(channelId);
+      if (stored) return stored;
+    }
+
     const haystack = `${channelName} ${categoryName}`.toLowerCase();
     for (const { keywords, note } of CHANNEL_CONTEXTS) {
       if (keywords.some(kw => haystack.includes(kw))) return note;
@@ -507,7 +650,26 @@ class SassyManager {
         this._activityWindows.delete(channelId);
         this._recentMessages.delete(channelId);
         this._lastActivity.delete(channelId);
+        this._channelMessageCount.delete(channelId);
         evicted++;
+      }
+    }
+
+    // Evict user counters for entries that haven't been touched since the
+    // last cleanup cycle.  We can't tie these to channel activity, so we
+    // simply drop any entry that has accumulated fewer than USER_NOTES_REFRESH_EVERY
+    // hits since the last cleanup (i.e. it resets when inactive).
+    if (this._userMessageCount.size > 0) {
+      for (const [key, count] of this._userMessageCount) {
+        // If the count is below the next threshold it hasn't fired recently —
+        // reset it so the map doesn't grow unbounded across server restarts.
+        if (count % USER_NOTES_REFRESH_EVERY !== 0) {
+          this._userMessageCount.set(key, 0);
+        }
+      }
+      // Hard-cap the map: if it somehow exceeds 5000 entries just clear it.
+      if (this._userMessageCount.size > 5000) {
+        this._userMessageCount.clear();
       }
     }
 

@@ -184,6 +184,14 @@ db.exec(`
     history     TEXT NOT NULL DEFAULT '[]',
     updated_at  INTEGER NOT NULL DEFAULT 0
   );
+
+  -- Per-channel profile: AI-generated topic notes summarising what the channel discusses.
+  CREATE TABLE IF NOT EXISTS sassy_channel_profiles (
+    channel_id   TEXT PRIMARY KEY,
+    guild_id     TEXT,
+    topic_notes  TEXT,
+    updated_at   INTEGER NOT NULL DEFAULT 0
+  );
 `);
 
 // ── Lightweight column migrations for existing installs ───────────────────────

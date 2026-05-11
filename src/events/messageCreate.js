@@ -26,20 +26,24 @@ module.exports = {
   name: 'messageCreate',
 
   async execute(message, client) {
-    // Ignore bots, DMs, and system messages.
-    if (message.author.bot || !message.guild || message.system) return;
+    // Ignore bots and system messages.
+    if (message.author.bot || message.system) return;
 
     try {
-      await handleGameMessage(message, client.gameManager);
+      // Game message handling only applies to guild channels.
+      if (message.guild) {
+        await handleGameMessage(message, client.gameManager);
+      }
 
       // ── SassyBot AI features (opt-in via SASSY_ENABLED=true) ─────────────────
       if (client.sassyManager) {
         // Suppress unprompted interjections while an active game is running in
         // this thread so Sassy doesn't disrupt gameplay.  Direct mentions/replies
-        // still work normally.
-        const inActiveThread =
+        // and DMs still work normally.
+        const inActiveThread = message.guild && (
           !!client.gameManager.getGame(message.channel.id) ||
-          !!client.cheeseThiefManager?.getGame(message.channel.id);
+          !!client.cheeseThiefManager?.getGame(message.channel.id)
+        );
         await client.sassyManager.handleMessage(message, { suppressInterjections: inActiveThread });
       }
     } catch (err) {

@@ -28,13 +28,15 @@ const CAPABILITIES = {
   resources: [
     { uri: '/resources/users/{guildId}/{userId}',              description: 'Full user context: profile, game stats, recent messages' },
     { uri: '/resources/channels/{channelId}',                  description: 'Recent conversation log for a channel' },
+    { uri: '/resources/channels/{channelId}/profile',          description: 'Stored topic notes for a channel' },
     { uri: '/resources/channels/{channelId}/participants',     description: 'Users active in a channel in the last N ms' },
     { uri: '/resources/scoreboards/{guildId}',                 description: 'Werewords top-10 scoreboard for a guild' },
     { uri: '/resources/scoreboards/{guildId}/wavelength',      description: 'Wavelength top-10 scoreboard for a guild' },
   ],
   tools: [
-    { name: 'log_message',         description: 'Append a message to the conversation log and update the user profile.' },
-    { name: 'update_topic_notes',  description: 'Set AI-generated topic notes for a user.' },
+    { name: 'log_message',                description: 'Append a message to the conversation log and update the user profile.' },
+    { name: 'update_topic_notes',         description: 'Set AI-generated topic notes for a user.' },
+    { name: 'update_channel_topic_notes', description: 'Set AI-generated topic notes for a channel.' },
   ],
 };
 
@@ -118,6 +120,12 @@ class McpServer {
       return this._repo.getChannelParticipants(m[1], windowMs);
     }
 
+    // ── GET /resources/channels/:channelId/profile ────────────────────────────
+    m = path.match(/^\/resources\/channels\/([^/]+)\/profile$/);
+    if (method === 'GET' && m) {
+      return this._repo.getChannelProfile(m[1]) ?? { channel_id: m[1], topic_notes: null };
+    }
+
     // ── GET /resources/channels/:channelId ────────────────────────────────────
     m = path.match(/^\/resources\/channels\/([^/]+)$/);
     if (method === 'GET' && m) {
@@ -158,6 +166,17 @@ class McpServer {
         throw Object.assign(new Error('Missing required fields: guildId, userId, notes'), { status: 400 });
       }
       this._repo.updateTopicNotes(guildId, userId, notes);
+      return { ok: true };
+    }
+
+    // ── POST /tools/update_channel_topic_notes ────────────────────────────────
+    if (method === 'POST' && path === '/tools/update_channel_topic_notes') {
+      const body = await this._readBody(req);
+      const { channelId, guildId, notes } = JSON.parse(body);
+      if (!channelId || !notes) {
+        throw Object.assign(new Error('Missing required fields: channelId, notes'), { status: 400 });
+      }
+      this._repo.updateChannelTopicNotes(channelId, guildId ?? null, notes);
       return { ok: true };
     }
 
