@@ -1,6 +1,7 @@
 // ============================================================
-//  SassyManager — Gemini-powered sassy AI features
-//  Ported from SassyBot (https://github.com/Stayingfalse/SassyBot)
+//  SassyManager — multi-provider AI sassy features
+//  Originally Gemini-only; now supports DeepSeek (OpenAI-compatible)
+//  with alternating provider selection and cross-provider fallback.
 //
 //  Enabled only when SASSY_ENABLED=true.  All tuning knobs are
 //  exposed as optional environment variables (see .env.example).
@@ -14,6 +15,8 @@ const { ChannelType } = require('discord.js');
 // ─── Configuration ───────────────────────────────────────────────────────────
 
 const GEMINI_MODEL       = process.env.GEMINI_MODEL        || 'gemini-2.0-flash';
+const DEEPSEEK_MODEL     = process.env.DEEPSEEK_MODEL      || 'deepseek-chat';
+const DEEPSEEK_BASE_URL  = process.env.DEEPSEEK_BASE_URL   || 'https://api.deepseek.com';
 const MAX_HISTORY_TURNS  = parseInt(process.env.MAX_HISTORY_TURNS  || '20', 10);
 const COOLDOWN_MS        = parseInt(process.env.COOLDOWN_MS        || '2000', 10);
 const INTERJECT_COOLDOWN = parseInt(process.env.INTERJECT_COOLDOWN || '180000', 10); // 3 min
@@ -23,15 +26,11 @@ const HISTORY_TTL_MS     = parseInt(process.env.HISTORY_TTL_MS     || '86400000'
 const MS_PER_HOUR = 3_600_000;
 
 // Optional: comma-separated channel IDs to restrict interjections.
-// Leave unset to allow interjections everywhere.
 const INTERJECT_CHANNELS = process.env.INTERJECT_CHANNELS
   ? new Set(process.env.INTERJECT_CHANNELS.split(',').map(s => s.trim()))
   : null;
 
 // ─── Channel-context knowledge base ─────────────────────────────────────────
-// Maps lowercase keywords found in a channel's category or channel name to a
-// descriptive sentence that is injected into the Gemini system prompt so the
-// AI can make contextually relevant comments.
 
 const CHANNEL_CONTEXTS = [
   {
@@ -57,13 +56,12 @@ const CHANNEL_CONTEXTS = [
 ];
 
 // ─── Activity tiers ──────────────────────────────────────────────────────────
-// Each tier: { min (messages in window), chance (0-1), context (messages fed to AI) }
 const ACTIVITY_TIERS = [
-  { min: 11, chance: 0.60, context: 10 }, // chaos
-  { min:  7, chance: 0.45, context:  7 }, // busy
-  { min:  4, chance: 0.30, context:  4 }, // active
-  { min:  2, chance: 0.18, context:  2 }, // light
-  { min:  1, chance: 0.08, context:  1 }, // quiet
+  { min: 11, chance: 0.60, context: 10 },
+  { min:  7, chance: 0.45, context:  7 },
+  { min:  4, chance: 0.30, context:  4 },
+  { min:  2, chance: 0.18, context:  2 },
+  { min:  1, chance: 0.08, context:  1 },
 ];
 
 // ─── System prompts ──────────────────────────────────────────────────────────
@@ -97,34 +95,32 @@ Rules:
 // ─── SassyManager class ──────────────────────────────────────────────────────
 
 class SassyManager {
-  constructor() {
+  /**
+   * @param {import('../db/ContextRepository')|null} contextRepo
+   */
+  constructor(contextRepo = null) {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error('[SassyManager] GEMINI_API_KEY is required when SASSY_ENABLED=true');
     }
 
-    const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    this._ai = genAI;
+    this._ai          = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    this._contextRepo = contextRepo;
 
-    // Per-channel conversation history for direct replies
-    // Map<channelId, Array<{ role: "user"|"model", parts: [{ text }] }>>
+    // Alternating provider counter. Odd counts → Gemini, even counts → DeepSeek.
+    this._aiCallCount = 0;
+
+    this._directCooldowns    = new Map();
+    this._interjectCooldowns = new Map();
+    this._activityWindows    = new Map();
+    this._recentMessages     = new Map();
+    this._lastActivity       = new Map();
+
+    // Per-channel in-memory conversation history (hydrated from SQLite on first access).
+    // Format: Array<{ role: "user"|"model", parts: [{ text }] }>
     this._conversationHistory = new Map();
 
-    // Per-channel cooldown for direct replies (anti-spam)
-    this._directCooldowns = new Map();
-
-    // Per-channel cooldown for interjections
-    this._interjectCooldowns = new Map();
-
-    // Per-channel rolling message timestamps for activity tracking
-    this._activityWindows = new Map();
-
-    // Per-channel recent messages for interjection context
-    this._recentMessages = new Map();
-
-    // Per-channel last activity timestamp (used by cleanup)
-    this._lastActivity = new Map();
-
-    console.log(`[SassyManager] Initialised — model: ${GEMINI_MODEL}`);
+    const hasDeepSeek = !!process.env.DEEPSEEK_API_KEY;
+    console.log(`[SassyManager] Initialised — Gemini: ${GEMINI_MODEL}${hasDeepSeek ? `, DeepSeek: ${DEEPSEEK_MODEL}` : ' (DeepSeek disabled)'}`);
     console.log(`[SassyManager] Interjection cooldown: ${INTERJECT_COOLDOWN / 1000}s | Activity window: ${ACTIVITY_WINDOW_MS / 1000}s`);
     console.log(`[SassyManager] History TTL: ${HISTORY_TTL_MS / MS_PER_HOUR}h`);
     if (INTERJECT_CHANNELS) {
@@ -139,12 +135,12 @@ class SassyManager {
   // ─── Public entry point ────────────────────────────────────────────────────
 
   /**
-   * Called for every non-bot guild message.
    * @param {import('discord.js').Message} message
    * @param {{ suppressInterjections?: boolean }} [options]
    */
   async handleMessage(message, options = {}) {
     const channelId   = message.channel.id;
+    const guildId     = message.guild?.id ?? null;
     const content     = message.content.trim();
     const isMentioned = message.mentions.has(message.client.user);
 
@@ -156,13 +152,21 @@ class SassyManager {
       isReplyToBot = ref?.author?.id === message.client.user.id;
     }
 
-    // Record activity and context for every human message
+    // Record activity for this channel
     this._recordActivity(channelId);
     this._storeRecentMessage(channelId, message.author.username, content);
 
-    // Derive channel context once for both paths
+    // Log to persistent context store
+    if (this._contextRepo) {
+      this._contextRepo.logMessage(channelId, guildId, message.author.id, message.author.username, content);
+    }
+
+    // Derive channel + user context once for both paths
     const { channelName, categoryName } = this._getChannelContext(message);
     const channelContext = this._buildContextNote(channelName, categoryName);
+    const userContext = (this._contextRepo && guildId)
+      ? this._contextRepo.buildUserContextString(guildId, message.author.id)
+      : null;
 
     // ── PATH A: Direct reply (mention or reply-to-bot) ─────────────────────
     if (isMentioned || isReplyToBot) {
@@ -174,37 +178,28 @@ class SassyManager {
 
       try {
         await message.channel.sendTyping();
-        const reply = await this._getDirectReply(channelId, userMessage, channelContext);
+        const reply = await this._getDirectReply(channelId, userMessage, channelContext, userContext);
         await message.reply(reply);
       } catch (err) {
         console.error('[SassyManager] Direct reply error:', err);
         await message.reply("*stares blankly* My brain blue-screened. Try again, I suppose.").catch(() => {});
       }
-      return; // Don't also try to interject on the same message
+      return;
     }
 
     // ── PATH B: Unprompted interjection ────────────────────────────────────
 
-    // Skip if Sassy has been asked to stand down (e.g. active game thread)
     if (options.suppressInterjections) return;
-
-    // Channel allow-list (if configured)
     if (INTERJECT_CHANNELS && !INTERJECT_CHANNELS.has(channelId)) return;
-
-    // Message quality gate
     if (!this._isInterjectable(content)) return;
 
-    // Per-channel interjection cooldown
     const now = Date.now();
     if (now - (this._interjectCooldowns.get(channelId) || 0) < INTERJECT_COOLDOWN) return;
 
-    // Resolve activity tier and roll the dice
     const tier = this._resolveTier(channelId);
     const roll = Math.random();
-
     if (roll > tier.chance) return;
 
-    // We're going in — log only when interjecting
     console.log(`[SassyManager] Interjecting in channel ${channelId} | tier ${tier.min}+ msgs | chance ${tier.chance} | roll ${roll.toFixed(3)}`);
 
     this._interjectCooldowns.set(channelId, now);
@@ -216,22 +211,18 @@ class SassyManager {
       await message.channel.send(zinger);
     } catch (err) {
       console.error('[SassyManager] Interjection error:', err);
-      // Fail silently — the bot just doesn't bother this time
     }
   }
 
-  // ─── Private helpers ───────────────────────────────────────────────────────
+  // ─── Activity tracking ─────────────────────────────────────────────────────
 
-  /** Prune timestamps outside the activity window and return current count. */
   _getActivityCount(channelId) {
     const now = Date.now();
-    const timestamps = this._activityWindows.get(channelId) || [];
-    const pruned = timestamps.filter(t => now - t < ACTIVITY_WINDOW_MS);
+    const pruned = (this._activityWindows.get(channelId) || []).filter(t => now - t < ACTIVITY_WINDOW_MS);
     this._activityWindows.set(channelId, pruned);
     return pruned.length;
   }
 
-  /** Record a new message timestamp for a channel. */
   _recordActivity(channelId) {
     const timestamps = this._activityWindows.get(channelId) || [];
     timestamps.push(Date.now());
@@ -239,7 +230,6 @@ class SassyManager {
     this._lastActivity.set(channelId, Date.now());
   }
 
-  /** Store a recent message for interjection context, capped at 10. */
   _storeRecentMessage(channelId, author, content) {
     const msgs = this._recentMessages.get(channelId) || [];
     msgs.push({ author, content });
@@ -247,16 +237,43 @@ class SassyManager {
     this._recentMessages.set(channelId, msgs);
   }
 
-  /** Resolve the activity tier for a channel. */
   _resolveTier(channelId) {
     const count = this._getActivityCount(channelId);
     for (const tier of ACTIVITY_TIERS) {
       if (count >= tier.min) return tier;
     }
-    return ACTIVITY_TIERS[ACTIVITY_TIERS.length - 1]; // fallback: quiet
+    return ACTIVITY_TIERS[ACTIVITY_TIERS.length - 1];
   }
 
-  /** Trim conversation history to the last MAX_HISTORY_TURNS turns. */
+  _isInterjectable(content) {
+    if (!content || content.trim().length === 0) return false;
+    if (content.trim().split(/\s+/).length < 4) return false;
+    if (/^https?:\/\/\S+$/.test(content.trim())) return false;
+    const stripped = content
+      .replace(/[\u2600-\u27BF]/gu, '')
+      .replace(/[\uFE00-\uFE0F]/gu, '')
+      .replace(/[\u{1F000}-\u{1FFFF}]/gu, '')
+      .replace(/[\u{E0000}-\u{E007F}]/gu, '')
+      .replace(/\uFE0F|\u200D/gu, '')
+      .trim();
+    return stripped.length >= 5;
+  }
+
+  _buildInterjectionContext(channelId, contextCount) {
+    const msgs = this._recentMessages.get(channelId) || [];
+    return msgs.slice(-contextCount).map(m => `${m.author}: ${m.content}`).join('\n');
+  }
+
+  // ─── History management ─────────────────────────────────────────────────────
+
+  _getHistory(channelId) {
+    if (!this._conversationHistory.has(channelId)) {
+      const stored = this._contextRepo ? this._contextRepo.loadChatHistory(channelId) : [];
+      this._conversationHistory.set(channelId, stored);
+    }
+    return this._conversationHistory.get(channelId);
+  }
+
   _trimHistory(channelId) {
     const history = this._conversationHistory.get(channelId) || [];
     const maxEntries = MAX_HISTORY_TURNS * 2;
@@ -265,77 +282,178 @@ class SassyManager {
     }
   }
 
-  /** Decide if a message is worth reacting to (basic content filter). */
-  _isInterjectable(content) {
-    if (!content || content.trim().length === 0) return false;
-    const words = content.trim().split(/\s+/);
-    if (words.length < 4) return false;
-    if (/^https?:\/\/\S+$/.test(content.trim())) return false; // URL-only
-    // Strip common Unicode emoji ranges and check if meaningful text remains.
-    // Covers: Misc Symbols, Dingbats, Emoticons, Misc Symbols & Pictographs,
-    // Transport & Map, Supplemental Symbols, enclosed alphanumerics, etc.
-    const emojiStripped = content
-      .replace(/[\u2600-\u27BF]/gu, '')       // Misc Symbols, Dingbats
-      .replace(/[\uFE00-\uFE0F]/gu, '')        // Variation selectors
-      .replace(/[\u{1F000}-\u{1FFFF}]/gu, '')  // Emoji & pictographic supplement
-      .replace(/[\u{E0000}-\u{E007F}]/gu, '')  // Tags
-      .replace(/\uFE0F|\u200D/gu, '')          // Variation selector-16, ZWJ
-      .trim();
-    if (emojiStripped.length < 5) return false;
-    return true;
+  // ─── AI provider selection & calling ──────────────────────────────────────
+
+  _nextProvider() {
+    if (!process.env.DEEPSEEK_API_KEY) return 'gemini';
+    this._aiCallCount++;
+    return this._aiCallCount % 2 === 0 ? 'deepseek' : 'gemini';
   }
 
-  /** Build a context string from recent messages for Gemini. */
-  _buildInterjectionContext(channelId, contextCount) {
-    const msgs = this._recentMessages.get(channelId) || [];
-    return msgs.slice(-contextCount).map(m => `${m.author}: ${m.content}`).join('\n');
+  /** Convert Gemini history to OpenAI messages format. */
+  _geminiHistoryToOpenAI(history) {
+    return history.map(turn => ({
+      role:    turn.role === 'model' ? 'assistant' : 'user',
+      content: turn.parts?.[0]?.text ?? '',
+    }));
   }
 
-  /** Call Gemini for a direct reply, maintaining per-channel history. */
-  async _getDirectReply(channelId, userMessage, channelContext) {
-    const history = this._conversationHistory.get(channelId) || [];
-    const systemInstruction = channelContext
-      ? `${SYSTEM_DIRECT}\n\nChannel context: ${channelContext}`
-      : SYSTEM_DIRECT;
-
+  async _callGemini(userMessage, history, systemPrompt) {
     const chat = this._ai.chats.create({
-      model: GEMINI_MODEL,
+      model:   GEMINI_MODEL,
       history,
-      config: { systemInstruction },
+      config:  { systemInstruction: systemPrompt },
     });
     const response = await chat.sendMessage({ message: userMessage });
-    const responseText = response.text ?? '';
+    return response.text ?? '';
+  }
 
-    history.push({ role: 'user',  parts: [{ text: userMessage  }] });
-    history.push({ role: 'model', parts: [{ text: responseText }] });
+  async _callDeepSeek(userMessage, history, systemPrompt) {
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...this._geminiHistoryToOpenAI(history),
+      { role: 'user', content: userMessage },
+    ];
+
+    const response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
+      method:  'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model:      DEEPSEEK_MODEL,
+        messages,
+        max_tokens: 300,
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => String(response.status));
+      throw new Error(`DeepSeek API error ${response.status}: ${text}`);
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content ?? '';
+  }
+
+  async _callProvider(provider, userMessage, history, systemPrompt) {
+    return provider === 'deepseek'
+      ? this._callDeepSeek(userMessage, history, systemPrompt)
+      : this._callGemini(userMessage, history, systemPrompt);
+  }
+
+  /**
+   * Call with automatic fallback: try primary, then secondary, then throw.
+   */
+  async _callWithFallback(userMessage, history, systemPrompt) {
+    const primary   = this._nextProvider();
+    const secondary = primary === 'gemini' ? 'deepseek' : 'gemini';
+
+    try {
+      const text = await this._callProvider(primary, userMessage, history, systemPrompt);
+      console.log(`[SassyManager] AI call via ${primary}`);
+      return text;
+    } catch (primaryErr) {
+      const secondaryAvailable = secondary === 'gemini' || !!process.env.DEEPSEEK_API_KEY;
+      if (secondaryAvailable) {
+        console.error(`[SassyManager] ${primary} failed, trying ${secondary}:`, primaryErr.message);
+        const text = await this._callProvider(secondary, userMessage, history, systemPrompt);
+        console.log(`[SassyManager] AI call via ${secondary} (fallback)`);
+        return text;
+      }
+      throw primaryErr;
+    }
+  }
+
+  // ─── Direct reply ──────────────────────────────────────────────────────────
+
+  async _getDirectReply(channelId, userMessage, channelContext, userContext) {
+    const history = this._getHistory(channelId);
+
+    let systemInstruction = SYSTEM_DIRECT;
+    if (channelContext) systemInstruction += `\n\nChannel context: ${channelContext}`;
+    if (userContext)    systemInstruction += `\n\nUser context: ${userContext}`;
+
+    const responseText = await this._callWithFallback(userMessage, history, systemInstruction);
+
+    history.push({ role: 'user',  parts: [{ text: userMessage   }] });
+    history.push({ role: 'model', parts: [{ text: responseText  }] });
     this._conversationHistory.set(channelId, history);
     this._trimHistory(channelId);
+
+    if (this._contextRepo) {
+      this._contextRepo.saveChatHistory(channelId, this._conversationHistory.get(channelId));
+    }
 
     return responseText;
   }
 
-  /** Call Gemini for an unprompted interjection. */
+  // ─── Interjection ──────────────────────────────────────────────────────────
+
   async _getInterjection(contextText, channelContext) {
-    const systemInstruction = channelContext
-      ? `${SYSTEM_INTERJECT}\n\nChannel context: ${channelContext}`
-      : SYSTEM_INTERJECT;
+    let systemInstruction = SYSTEM_INTERJECT;
+    if (channelContext) systemInstruction += `\n\nChannel context: ${channelContext}`;
+
     const prompt = `Here is the recent conversation:\n\n${contextText}\n\nDrop your one-line reaction.`;
+
+    // Interjections are stateless — no conversation history
+    const primary   = this._nextProvider();
+    const secondary = primary === 'gemini' ? 'deepseek' : 'gemini';
+
+    try {
+      const text = await this._callStateless(primary, prompt, systemInstruction);
+      console.log(`[SassyManager] Interjection via ${primary}`);
+      return text;
+    } catch (primaryErr) {
+      const secondaryAvailable = secondary === 'gemini' || !!process.env.DEEPSEEK_API_KEY;
+      if (secondaryAvailable) {
+        console.error(`[SassyManager] ${primary} interjection failed, trying ${secondary}:`, primaryErr.message);
+        const text = await this._callStateless(secondary, prompt, systemInstruction);
+        console.log(`[SassyManager] Interjection via ${secondary} (fallback)`);
+        return text;
+      }
+      throw primaryErr;
+    }
+  }
+
+  /** Single-turn generation (no history). */
+  async _callStateless(provider, prompt, systemInstruction) {
+    if (provider === 'deepseek') {
+      const response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
+        method:  'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model:      DEEPSEEK_MODEL,
+          messages:   [
+            { role: 'system', content: systemInstruction },
+            { role: 'user',   content: prompt },
+          ],
+          max_tokens: 150,
+        }),
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => String(response.status));
+        throw new Error(`DeepSeek API error ${response.status}: ${text}`);
+      }
+      const data = await response.json();
+      return (data.choices?.[0]?.message?.content ?? '').trim();
+    }
+
+    // Gemini stateless
     const result = await this._ai.models.generateContent({
-      model: GEMINI_MODEL,
+      model:    GEMINI_MODEL,
       contents: prompt,
-      config: { systemInstruction },
+      config:   { systemInstruction },
     });
     return (result.text ?? '').trim();
   }
 
   // ─── Channel context helpers ───────────────────────────────────────────────
 
-  /**
-   * Extract the channel name and parent category name from a Discord message.
-   * Works for regular text channels and threads (one level deep).
-   * @param {import('discord.js').Message} message
-   * @returns {{ channelName: string, categoryName: string }}
-   */
   _getChannelContext(message) {
     const channel = message.channel;
     const channelName = channel.name ?? '';
@@ -343,10 +461,8 @@ class SassyManager {
 
     if (channel.parent) {
       if (channel.parent.type === ChannelType.GuildCategory) {
-        // Regular text channel: parent is the category
         categoryName = channel.parent.name ?? '';
       } else if (channel.parent.parent?.type === ChannelType.GuildCategory) {
-        // Thread: parent is a text channel, grandparent is the category
         categoryName = channel.parent.parent.name ?? '';
       }
     }
@@ -354,13 +470,6 @@ class SassyManager {
     return { channelName, categoryName };
   }
 
-  /**
-   * Map a channel/category name pair to a descriptive context note for the AI.
-   * Returns null if no known context matches.
-   * @param {string} channelName
-   * @param {string} categoryName
-   * @returns {string|null}
-   */
   _buildContextNote(channelName, categoryName) {
     const haystack = `${channelName} ${categoryName}`.toLowerCase();
     for (const { keywords, note } of CHANNEL_CONTEXTS) {
@@ -371,17 +480,14 @@ class SassyManager {
 
   // ─── Memory cleanup ────────────────────────────────────────────────────────
 
-  /**
-   * Start a periodic timer that evicts per-channel state for channels that have
-   * had no activity in the last HISTORY_TTL_MS milliseconds.  Runs every hour.
-   */
   _startCleanupTimer() {
-    this._cleanupInterval = setInterval(() => this._evictStaleChannels(), MS_PER_HOUR);
-    // Allow Node.js to exit even if this timer is still pending
+    this._cleanupInterval = setInterval(() => {
+      this._evictStaleChannels();
+      if (this._contextRepo) this._contextRepo.pruneOldLogs();
+    }, MS_PER_HOUR);
     if (this._cleanupInterval.unref) this._cleanupInterval.unref();
   }
 
-  /** Stop the cleanup timer and release all per-channel state. */
   destroy() {
     if (this._cleanupInterval) {
       clearInterval(this._cleanupInterval);
@@ -389,7 +495,6 @@ class SassyManager {
     }
   }
 
-  /** Remove all per-channel state for channels inactive longer than HISTORY_TTL_MS. */
   _evictStaleChannels() {
     const cutoff = Date.now() - HISTORY_TTL_MS;
     let evicted = 0;

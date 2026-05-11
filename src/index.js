@@ -13,6 +13,8 @@ const WavelengthManager = require('./game/WavelengthManager');
 const HerdMentalityManager = require('./game/HerdMentalityManager');
 const BirthdayManager = require('./game/BirthdayManager');
 const SassyManager = require('./game/SassyManager');
+const contextRepo = require('./db/ContextRepository');
+const McpServer = require('./mcp/McpServer');
 
 // ── Process-level crash guards ─────────────────────────────────────────────
 // Prevent Node from exiting on unhandled async errors or synchronous throws.
@@ -49,9 +51,26 @@ client.birthdayManager = new BirthdayManager();
 // Set SASSY_ENABLED=true and provide a GEMINI_API_KEY to activate.
 if (process.env.SASSY_ENABLED === 'true') {
   try {
-    client.sassyManager = new SassyManager();
+    client.sassyManager = new SassyManager(contextRepo);
   } catch (err) {
     console.error('[SassyManager] Failed to initialise:', err);
+  }
+}
+
+// Conditionally start the MCP context server.
+// Set MCP_ENABLED=true to activate (defaults to true when SASSY_ENABLED is on).
+// Set MCP_ENABLED=false to disable it even when SASSY_ENABLED is true.
+const mcpEnabled =
+  process.env.MCP_ENABLED === 'true' ||
+  (!process.env.MCP_ENABLED && process.env.SASSY_ENABLED === 'true');
+
+if (mcpEnabled) {
+  try {
+    const mcpPort = parseInt(process.env.MCP_SERVER_PORT || '3100', 10);
+    const mcpServer = new McpServer(contextRepo, mcpPort);
+    mcpServer.start();
+  } catch (err) {
+    console.error('[McpServer] Failed to start:', err);
   }
 }
 
