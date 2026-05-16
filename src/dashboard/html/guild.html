@@ -486,7 +486,10 @@
             return r.json();
           }),
           fetch('/dashboard/api/features').then(r => r.json()),
-          fetch('/dashboard/api/guilds').then(r => r.json()),
+          fetch('/dashboard/api/guilds').then(r => {
+            if (r.status === 401) { location.href = '/dashboard/login'; throw new Error('Unauthorized: redirecting to login'); }
+            return r.json();
+          }),
         ]);
 
         // Populate guild header

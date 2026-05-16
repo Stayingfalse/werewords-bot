@@ -197,7 +197,9 @@
 
         grid.innerHTML = '';
         for (const guild of guilds) {
-          const settings = await fetch(`/dashboard/api/guilds/${guild.id}`).then(r => r.json()).catch(() => null);
+          const settings = await fetch(`/dashboard/api/guilds/${guild.id}`)
+            .then(r => (r.ok ? r.json() : null))
+            .catch(() => null);
           const enabledCount = settings
             ? Object.values(settings.features).filter(f => f.enabled).length
             : '?';

@@ -94,7 +94,7 @@ class DashboardServer {
       console.warn('[Dashboard] OAuth client credentials are incomplete. Set DISCORD_CLIENT_ID (or CLIENT_ID) and one of DISCORD_CLIENT_SECRET / CLIENT_SECRET / DISCORD_OAUTH_CLIENT_SECRET / OAUTH_CLIENT_SECRET before using dashboard OAuth.');
     }
 
-    const superAdminRaw = process.env.SUPER_ADMIN_IDS || '';
+    const superAdminRaw = firstNonEmptyEnv('SUPER_ADMIN_IDS', 'SUPER_ADMIN_ID');
     this._superAdminIds = new Set(superAdminRaw.split(',').map(s => s.trim()).filter(Boolean));
 
     // Session secret used for CSRF state param
@@ -160,7 +160,11 @@ class DashboardServer {
       await this._route(method, p, url, req, res);
     } catch (err) {
       if (err.status === 401) {
-        this._redirect(res, '/dashboard/login');
+        if (p.startsWith('/dashboard/api/')) {
+          this._sendJson(res, 401, { error: 'Unauthorized' });
+        } else {
+          this._redirect(res, '/dashboard/login');
+        }
       } else if (err.status === 403) {
         this._sendJson(res, 403, { error: 'Forbidden' });
       } else if (err.status === 400) {
@@ -311,9 +315,15 @@ class DashboardServer {
     // Exchange code for access token
     const tokenData = await this._discordTokenExchange(code);
     if (!tokenData.access_token) {
-      res.writeHead(500, { 'Content-Type': 'text/plain' });
-      res.end('OAuth token exchange failed. Verify DISCORD_CLIENT_ID/CLIENT_ID and DISCORD_CLIENT_SECRET/CLIENT_SECRET are configured.');
-      return;
+      // OAuth codes are one-time-use. If the browser retries /callback with the
+      // same code, keep any already-established session instead of hard-failing.
+      const existingSession = this._getSession(req);
+      if (existingSession) {
+        return this._redirect(res, '/dashboard/static/dashboard.html');
+      }
+
+      res.setHeader('Set-Cookie', 'dash_state=; Path=/dashboard; HttpOnly; SameSite=Lax; Max-Age=0');
+      return this._redirect(res, '/dashboard/login');
     }
 
     // Fetch user identity and guilds in parallel
