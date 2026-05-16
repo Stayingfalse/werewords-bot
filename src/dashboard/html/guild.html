@@ -432,11 +432,14 @@
     }
 
     // ── Channel tag input component ──────────────────────────────────────────
-    function createChannelTagInput(containerId, initialIds) {
-      const container = document.getElementById(containerId);
+    function createChannelTagInput(containerOrId, initialIds) {
+      const container = typeof containerOrId === 'string'
+        ? document.getElementById(containerOrId)
+        : containerOrId;
       let ids = [...(initialIds || [])];
 
       function render() {
+        if (!container) return;
         container.innerHTML = '';
         for (const id of ids) {
           const tag = document.createElement('span');
@@ -470,7 +473,7 @@
         container.onclick = () => input.focus();
       }
 
-      render();
+      if (container) render();
       return { getIds: () => [...ids] };
     }
 
@@ -540,15 +543,18 @@
       // Build channel tag input if applicable
       let channelTagInput = null;
       if (feat.hasChannels) {
-        channelTagInput = createChannelTagInput(`ch-input-${feat.id}`, safeChannelIds);
+        const channelContainer = section.querySelector(`#ch-input-${feat.id}`);
+        channelTagInput = createChannelTagInput(channelContainer, safeChannelIds);
 
         // Update summary on change
-        document.getElementById(`ch-input-${feat.id}`).addEventListener('change', () => {
+        channelContainer?.addEventListener('change', () => {
           const ids = channelTagInput.getIds();
-          const summary = document.getElementById(`ch-summary-${feat.id}`);
-          summary.textContent = ids.length
-            ? `${ids.length} channel${ids.length !== 1 ? 's' : ''} restricted`
-            : 'All channels';
+          const summary = section.querySelector(`#ch-summary-${feat.id}`);
+          if (summary) {
+            summary.textContent = ids.length
+              ? `${ids.length} channel${ids.length !== 1 ? 's' : ''} restricted`
+              : 'All channels';
+          }
         });
       }
 
