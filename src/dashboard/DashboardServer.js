@@ -455,7 +455,7 @@ class DashboardServer {
         r.on('data', c => { data += c; });
         r.on('end',  () => {
           const httpStatus = Number(r.statusCode || 0);
-          let parsed;
+          let parsed = {};
           try { parsed = JSON.parse(data); }
           catch (err) {
             console.error('[Dashboard] Failed to parse Discord token response:', err.message);
