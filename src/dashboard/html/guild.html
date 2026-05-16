@@ -815,6 +815,8 @@
       const templates = Array.isArray(currentExtra.templates) && currentExtra.templates.length
         ? currentExtra.templates.join('\n')
         : '';
+      const joinPromptGuidance = (currentExtra.joinPromptGuidance || '').trim();
+      const roleGrantPromptGuidance = (currentExtra.roleGrantPromptGuidance || '').trim();
 
       root.innerHTML = `
         <div class="wizard-settings-title">Setup wizard</div>
@@ -842,6 +844,16 @@
           </select>
         </div>
         <div class="wizard-field">
+          <label for="wizard-${feat.id}-join-prompt-guidance">Join welcome AI prompt guidance (optional)</label>
+          <textarea id="wizard-${feat.id}-join-prompt-guidance" placeholder="Ask them to introduce themselves in the introduce channel, keep it friendly and short.">${escHtml(joinPromptGuidance)}</textarea>
+          <div class="wizard-hint">Used for member-join welcome posts. Base rules are always enforced automatically.</div>
+        </div>
+        <div class="wizard-field">
+          <label for="wizard-${feat.id}-role-grant-prompt-guidance">Role-grant AI prompt guidance (optional)</label>
+          <textarea id="wizard-${feat.id}-role-grant-prompt-guidance" placeholder="Tell them their base role was granted and direct them to the roles channel to pick game roles.">${escHtml(roleGrantPromptGuidance)}</textarea>
+          <div class="wizard-hint">Used after admins welcome someone and their base role is granted. Base rules are always enforced automatically.</div>
+        </div>
+        <div class="wizard-field">
           <label class="toggle-label">
             <input id="wizard-${feat.id}-auto-welcome-enabled" type="checkbox" ${currentExtra.autoWelcomeEnabled !== false ? 'checked' : ''} />
             Auto-welcome new members when they join
@@ -861,6 +873,8 @@
           const triggerChannelId = root.querySelector(`#wizard-${feat.id}-trigger-channel`)?.value?.trim() || null;
           const grantRoleId = root.querySelector(`#wizard-${feat.id}-grant-role`)?.value?.trim() || null;
           const roleMenuChannelId = root.querySelector(`#wizard-${feat.id}-roles-channel`)?.value?.trim() || null;
+          const joinPromptGuidance = root.querySelector(`#wizard-${feat.id}-join-prompt-guidance`)?.value?.trim() || null;
+          const roleGrantPromptGuidance = root.querySelector(`#wizard-${feat.id}-role-grant-prompt-guidance`)?.value?.trim() || null;
           const autoWelcomeEnabled = !!root.querySelector(`#wizard-${feat.id}-auto-welcome-enabled`)?.checked;
           const rawTemplates = root.querySelector(`#wizard-${feat.id}-templates`)?.value || '';
           const templates = rawTemplates.split('\n').map((line) => line.trim()).filter(Boolean).slice(0, 30);
@@ -869,6 +883,7 @@
             if (!triggerPhrase) return { ok: false, message: 'Trigger phrase is required.' };
             if (!triggerChannelId) return { ok: false, message: 'Introduce-yourself channel is required.' };
             if (!grantRoleId) return { ok: false, message: 'Welcome/base role is required.' };
+            if (!roleMenuChannelId) return { ok: false, message: 'Role-selection channel is required.' };
           }
 
           return {
@@ -878,6 +893,8 @@
               triggerChannelId,
               grantRoleId,
               roleMenuChannelId,
+              joinPromptGuidance,
+              roleGrantPromptGuidance,
               autoWelcomeEnabled,
               templates,
             },
