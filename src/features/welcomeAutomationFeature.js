@@ -10,11 +10,12 @@ const WELCOME_AI_SYSTEM_PROMPT = [
   'Rules:',
   '- 2 short sentences maximum.',
   '- Keep the provided user mention token exactly as-is.',
-  '- Mention the role channel token when provided.',
-  '- Ask them to introduce themselves.',
-  '- Mention that Benwell / Potato will be around to give them access.',
+  '- Follow the mode-specific requirements exactly.',
   '- Return only the final message text.',
 ].join('\n');
+
+const DEFAULT_JOIN_PROMPT_GUIDANCE = 'Ask them to introduce themselves in the introduce channel, keep it friendly and short.';
+const DEFAULT_ROLE_GRANT_PROMPT_GUIDANCE = 'Tell them their base role was granted and direct them to the roles channel to pick game roles.';
 
 const DEFAULT_THEMES = [
   'Pull up a chair at the table, %s! We\'ve set up the board for you.',
@@ -62,6 +63,12 @@ function normalizeBoolean(value, fallback = true) {
   return fallback;
 }
 
+function normalizePromptGuidance(value, fallback) {
+  const normalized = normalizeString(value);
+  if (!normalized) return fallback;
+  return normalized.slice(0, 600);
+}
+
 function getWelcomeAutomationSettings(guildId) {
   let row = null;
   try {
@@ -78,6 +85,8 @@ function getWelcomeAutomationSettings(guildId) {
     grantRoleId: normalizeId(extra.grantRoleId),
     roleMenuChannelId: normalizeId(extra.roleMenuChannelId),
     autoWelcomeEnabled: normalizeBoolean(extra.autoWelcomeEnabled, true),
+    joinPromptGuidance: normalizePromptGuidance(extra.joinPromptGuidance, DEFAULT_JOIN_PROMPT_GUIDANCE),
+    roleGrantPromptGuidance: normalizePromptGuidance(extra.roleGrantPromptGuidance, DEFAULT_ROLE_GRANT_PROMPT_GUIDANCE),
     templates: normalizeTemplateList(extra.templates),
   };
 }
@@ -98,20 +107,37 @@ function formatWelcomeMessage(template, userMention, roleMenuChannelId) {
   return `${base}${roleLine}`;
 }
 
-function ensureWelcomeRequirements(text, userMention, roleMenuChannelId) {
+function ensureJoinWelcomeRequirements(text, userMention, introduceChannelId) {
   let next = String(text || '').trim();
   if (!next) return '';
   if (!next.includes(userMention)) {
     next = `${userMention} ${next}`;
   }
-  if (roleMenuChannelId && !next.includes(`<#${roleMenuChannelId}>`)) {
-    next = `${next} Please check out <#${roleMenuChannelId}> for roles.`;
+  if (introduceChannelId && !next.includes(`<#${introduceChannelId}>`)) {
+    next = `${next} Please introduce yourself in <#${introduceChannelId}>.`;
   }
   if (!/introduce/i.test(next)) {
-    next = `${next} Please introduce yourself so everyone can say hi.`;
+    next = `${next} Please introduce yourself there so everyone can say hi.`;
   }
-  if (!/(Benwell|Potato)/i.test(next)) {
-    next = `${next} Benwell / Potato will be around to give you access.`;
+  return next
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.!?])/g, '$1')
+    .trim();
+}
+
+function ensureRoleGrantWelcomeRequirements(text, userMention, roleMention, roleMenuChannelId) {
+  let next = String(text || '').trim();
+  if (!next) return '';
+  if (!next.includes(userMention)) {
+    next = `${userMention} ${next}`;
+  }
+  if (roleMention && !next.includes(roleMention)) {
+    next = `${next} You now have ${roleMention}.`;
+  } else if (!/role/i.test(next)) {
+    next = `${next} Your base access role is now active.`;
+  }
+  if (roleMenuChannelId && !next.includes(`<#${roleMenuChannelId}>`)) {
+    next = `${next} Head to <#${roleMenuChannelId}> to choose your roles.`;
   }
   return next
     .replace(/\s+/g, ' ')
@@ -121,27 +147,51 @@ function ensureWelcomeRequirements(text, userMention, roleMenuChannelId) {
 
 async function buildWelcomeMessage({
   userMention,
+  introduceChannelId,
   roleMenuChannelId,
+  roleMention,
   mode,
+  joinPromptGuidance,
+  roleGrantPromptGuidance,
   templates,
   sassyManager,
 }) {
+  const introduceChannelMention = introduceChannelId ? `<#${introduceChannelId}>` : 'the introduce-yourself channel';
   const roleChannelMention = roleMenuChannelId ? `<#${roleMenuChannelId}>` : 'the role-selection channel';
   const modeContext = mode === 'join'
-    ? 'A new member just joined. Welcome them and direct them to introduce themselves.'
-    : 'An admin just welcomed a member after intro verification.';
+    ? 'A new member just joined.'
+    : 'An admin just welcomed a member after intro verification and granted access.';
+  const modeRules = mode === 'join'
+    ? [
+      '- Mention only the introduce channel token for where they should post.',
+      '- Ask them to introduce themselves in that channel.',
+      '- Do not mention role grants.',
+      `- Follow this guidance: ${joinPromptGuidance || DEFAULT_JOIN_PROMPT_GUIDANCE}`,
+    ]
+    : [
+      '- Confirm their base role is granted.',
+      '- Direct them to the role channel token to pick roles.',
+      '- Do not ask them to introduce themselves.',
+      `- Follow this guidance: ${roleGrantPromptGuidance || DEFAULT_ROLE_GRANT_PROMPT_GUIDANCE}`,
+    ];
 
   const prompt = [
     modeContext,
     `User mention token: ${userMention}`,
+    `Introduce channel token: ${introduceChannelMention}`,
     `Role channel token: ${roleChannelMention}`,
+    `Role mention token: ${roleMention || 'the base role'}`,
+    'Mode rules:',
+    ...modeRules,
     'Keep this concise and friendly, with light playful sass only.',
   ].join('\n');
 
   if (sassyManager?.generateWelcomeMessage) {
     try {
       const aiText = await sassyManager.generateWelcomeMessage(prompt, WELCOME_AI_SYSTEM_PROMPT);
-      const enforced = ensureWelcomeRequirements(aiText, userMention, roleMenuChannelId);
+      const enforced = mode === 'join'
+        ? ensureJoinWelcomeRequirements(aiText, userMention, introduceChannelId)
+        : ensureRoleGrantWelcomeRequirements(aiText, userMention, roleMention, roleMenuChannelId);
       if (enforced) return enforced;
     } catch (err) {
       console.error('[WelcomeAutomation] AI welcome generation failed:', err.message);
@@ -149,7 +199,10 @@ async function buildWelcomeMessage({
   }
 
   const template = pickTemplate(templates);
-  return ensureWelcomeRequirements(formatWelcomeMessage(template, userMention, roleMenuChannelId), userMention, roleMenuChannelId);
+  if (mode === 'join') {
+    return ensureJoinWelcomeRequirements(formatWelcomeMessage(template, userMention, null), userMention, introduceChannelId);
+  }
+  return ensureRoleGrantWelcomeRequirements(formatWelcomeMessage(template, userMention, roleMenuChannelId), userMention, roleMention, roleMenuChannelId);
 }
 
 async function handleWelcomeAutomationMessage(message, client = null) {
@@ -187,8 +240,12 @@ async function handleWelcomeAutomationMessage(message, client = null) {
 
   const reply = await buildWelcomeMessage({
     userMention: targetMember.toString(),
+    introduceChannelId: config.triggerChannelId,
     roleMenuChannelId: config.roleMenuChannelId,
+    roleMention: role.toString(),
     mode: 'manual',
+    joinPromptGuidance: config.joinPromptGuidance,
+    roleGrantPromptGuidance: config.roleGrantPromptGuidance,
     templates: config.templates,
     sassyManager: client?.sassyManager || message.client?.sassyManager,
   });
@@ -206,8 +263,11 @@ async function handleWelcomeAutomationMemberJoin(member, client = null) {
 
   const welcome = await buildWelcomeMessage({
     userMention: member.toString(),
+    introduceChannelId: config.triggerChannelId,
     roleMenuChannelId: config.roleMenuChannelId,
     mode: 'join',
+    joinPromptGuidance: config.joinPromptGuidance,
+    roleGrantPromptGuidance: config.roleGrantPromptGuidance,
     templates: config.templates,
     sassyManager: client?.sassyManager || member.client?.sassyManager,
   });
