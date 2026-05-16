@@ -27,6 +27,15 @@ services:
       # MCP_ENABLED: "true"
       # MCP_SERVER_PORT: "3100"
       # CONTEXT_LOG_RETENTION_DAYS: "30"
+      # ── Admin Dashboard (optional) ────────────────────────────────────────
+      # Uncomment and configure to enable the web admin dashboard.
+      # See .env.example for full documentation.
+      # DASHBOARD_ENABLED: "true"
+      # DASHBOARD_PORT: "3200"
+      # DASHBOARD_URL: "http://your-server-ip-or-domain:3200"
+      # DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
+      # SUPER_ADMIN_IDS: ${SUPER_ADMIN_IDS}
+      # DASHBOARD_SESSION_SECRET: ${DASHBOARD_SESSION_SECRET}
     volumes:
       - ./data:/app/data
     ports:
@@ -34,3 +43,6 @@ services:
       # Claude Desktop) can connect. Remove this section if you don't need
       # external access — the bot container can reach it on localhost:3100.
       - "3100:3100"
+      # Expose the admin dashboard port.  Set DASHBOARD_ENABLED=true to activate.
+      # Change the host port (left side) if 3200 is already in use.
+      - "3200:3200"

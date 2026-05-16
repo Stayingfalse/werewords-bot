@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Potato Game Bot — Guild Settings</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #1e1f22;
+      --surface:   #2b2d31;
+      --surface2:  #313338;
+      --border:    #3f4147;
+      --text:      #dbdee1;
+      --muted:     #949ba4;
+      --accent:    #5865f2;
+      --accent-hv: #4752c4;
+      --danger:    #ed4245;
+      --success:   #23a55a;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+    }
+
+    /* ── Nav ──────────────────────────────────────────────────────────────── */
+    nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .nav-left { display: flex; align-items: center; gap: 16px; }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 16px;
+      text-decoration: none;
+      color: var(--text);
+    }
+
+    .back-link {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .back-link:hover { color: var(--text); }
+
+    .nav-actions { display: flex; align-items: center; gap: 12px; }
+    #nav-username { font-size: 14px; color: var(--muted); }
+
+    .btn-logout {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
+
+    /* ── Main ─────────────────────────────────────────────────────────────── */
+    main { max-width: 720px; margin: 0 auto; padding: 32px 24px; }
+
+    .page-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+
+    .guild-icon-lg {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: var(--surface2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .guild-icon-lg img { width: 100%; height: 100%; object-fit: cover; }
+
+    .page-title { font-size: 22px; font-weight: 700; }
+    .page-subtitle { color: var(--muted); font-size: 13px; margin-top: 2px; }
+
+    /* ── Feature sections ─────────────────────────────────────────────────── */
+    .feature-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+
+    .feature-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      cursor: pointer;
+      user-select: none;
+      gap: 12px;
+    }
+    .feature-header:hover { background: var(--surface2); }
+
+    .feature-header-left { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+    .feature-name { font-weight: 600; font-size: 15px; }
+
+    .status-pill {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 100px;
+      font-weight: 600;
+    }
+    .status-pill.on  { background: rgba(35,165,90,.15);  color: var(--success); }
+    .status-pill.off { background: rgba(237,66,69,.12);  color: var(--danger); }
+
+    .chevron {
+      color: var(--muted);
+      font-size: 12px;
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+    .feature-section.open .chevron { transform: rotate(180deg); }
+
+    .feature-body {
+      display: none;
+      padding: 0 20px 20px;
+      border-top: 1px solid var(--border);
+    }
+    .feature-section.open .feature-body { display: block; }
+
+    /* ── Toggle switch ────────────────────────────────────────────────────── */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 0 12px;
+    }
+    .toggle-label { font-size: 14px; color: var(--muted); }
+
+    .toggle {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background: var(--border);
+      border-radius: 24px;
+      transition: background 0.2s;
+    }
+    .slider::before {
+      content: '';
+      position: absolute;
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle input:checked + .slider { background: var(--accent); }
+    .toggle input:checked + .slider::before { transform: translateX(20px); }
+
+    /* ── Channel input ────────────────────────────────────────────────────── */
+    .channels-section { margin-top: 8px; }
+    .channels-label {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .channel-tag-input {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px;
+      min-height: 42px;
+      cursor: text;
+    }
+    .channel-tag-input:focus-within { border-color: var(--accent); }
+
+    .channel-tag {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 12px;
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+    .channel-tag button {
+      background: none;
+      border: none;
+      color: rgba(255,255,255,.7);
+      cursor: pointer;
+      padding: 0;
+      font-size: 13px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+    }
+    .channel-tag button:hover { color: #fff; }
+
+    .channel-input {
+      border: none;
+      background: transparent;
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+      min-width: 120px;
+      flex: 1;
+    }
+    .channel-input::placeholder { color: var(--muted); }
+
+    .channels-hint { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+    .btn-save {
+      margin-top: 14px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 9px 20px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-save:hover { background: var(--accent-hv); }
+    .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .save-feedback {
+      font-size: 12px;
+      margin-left: 10px;
+      display: none;
+    }
+    .save-feedback.ok  { color: var(--success); }
+    .save-feedback.err { color: var(--danger); }
+
+    /* ── Loading / error states ───────────────────────────────────────────── */
+    .state-msg { color: var(--muted); font-size: 14px; padding: 40px 0; text-align: center; }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="nav-left">
+      <a href="/dashboard" class="nav-brand">🥔 Potato Game Bot</a>
+      <a href="/dashboard" class="back-link">← Back to servers</a>
+    </div>
+    <div class="nav-actions">
+      <span id="nav-username"></span>
+      <form method="POST" action="/dashboard/logout">
+        <button type="submit" class="btn-logout">Sign out</button>
+      </form>
+    </div>
+  </nav>
+
+  <main>
+    <div class="page-header">
+      <div class="guild-icon-lg" id="guild-icon">…</div>
+      <div>
+        <div class="page-title" id="guild-name">Loading…</div>
+        <div class="page-subtitle" id="guild-id-display"></div>
+      </div>
+    </div>
+
+    <div id="features-container">
+      <p class="state-msg">Loading settings…</p>
+    </div>
+  </main>
+
+  <script>
+    // Extract guild ID from URL: /dashboard/guild/<guildId>
+    const guildId = location.pathname.split('/').pop();
+
+    function escHtml(str) {
+      return String(str).replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // ── Channel tag input component ──────────────────────────────────────────
+    function createChannelTagInput(containerId, initialIds) {
+      const container = document.getElementById(containerId);
+      let ids = [...(initialIds || [])];
+
+      function render() {
+        container.innerHTML = '';
+        for (const id of ids) {
+          const tag = document.createElement('span');
+          tag.className = 'channel-tag';
+          tag.innerHTML = `<span>#${escHtml(id)}</span><button type="button" aria-label="Remove">&times;</button>`;
+          tag.querySelector('button').onclick = () => {
+            ids = ids.filter(x => x !== id);
+            render();
+            container.dispatchEvent(new Event('change'));
+          };
+          container.appendChild(tag);
+        }
+        const input = document.createElement('input');
+        input.className = 'channel-input';
+        input.placeholder = ids.length ? '' : 'Paste channel ID and press Enter (leave empty for all channels)';
+        input.addEventListener('keydown', e => {
+          if (e.key === 'Enter' && input.value.trim()) {
+            e.preventDefault();
+            const val = input.value.trim();
+            if (/^\d+$/.test(val) && !ids.includes(val)) {
+              ids.push(val);
+              render();
+              container.dispatchEvent(new Event('change'));
+            } else {
+              input.style.color = 'var(--danger)';
+              setTimeout(() => { input.style.color = ''; }, 600);
+            }
+          }
+        });
+        container.appendChild(input);
+        container.onclick = () => input.focus();
+      }
+
+      render();
+      return { getIds: () => [...ids] };
+    }
+
+    // ── Build feature section ────────────────────────────────────────────────
+    function buildFeatureSection(feat, settings) {
+      const current = settings[feat.id] || { enabled: true, channelIds: null };
+
+      const section = document.createElement('div');
+      section.className = 'feature-section';
+      section.dataset.featureId = feat.id;
+
+      const statusClass = current.enabled ? 'on'  : 'off';
+      const statusText  = current.enabled ? 'ON'  : 'OFF';
+      const channelCount = current.channelIds?.length;
+      const channelSub = channelCount
+        ? `${channelCount} channel${channelCount !== 1 ? 's' : ''} restricted`
+        : 'All channels';
+
+      section.innerHTML = `
+        <div class="feature-header">
+          <div class="feature-header-left">
+            <span class="feature-name">${escHtml(feat.label)}</span>
+            <span class="status-pill ${statusClass}" id="pill-${feat.id}">${statusText}</span>
+          </div>
+          <span class="channels-hint" id="ch-summary-${feat.id}" style="color:var(--muted);font-size:12px;">${escHtml(channelSub)}</span>
+          <span class="chevron">▼</span>
+        </div>
+        <div class="feature-body">
+          <div class="toggle-row">
+            <label class="toggle">
+              <input type="checkbox" id="toggle-${feat.id}" ${current.enabled ? 'checked' : ''} />
+              <span class="slider"></span>
+            </label>
+            <span class="toggle-label">Enable ${escHtml(feat.label)}</span>
+          </div>
+          ${feat.hasChannels ? `
+          <div class="channels-section">
+            <div class="channels-label">Restrict to channels (leave empty for all channels):</div>
+            <div class="channel-tag-input" id="ch-input-${feat.id}"></div>
+            <div class="channels-hint">Enter a Discord channel ID and press <kbd>Enter</kbd> to add it.</div>
+          </div>` : ''}
+          <div style="display:flex;align-items:center;margin-top:14px;">
+            <button class="btn-save" id="save-${feat.id}">Save</button>
+            <span class="save-feedback" id="feedback-${feat.id}"></span>
+          </div>
+        </div>
+      `;
+
+      // Toggle collapse
+      section.querySelector('.feature-header').addEventListener('click', () => {
+        section.classList.toggle('open');
+      });
+
+      // Update pill on toggle change
+      const toggleInput = section.querySelector(`#toggle-${feat.id}`);
+      toggleInput.addEventListener('change', () => {
+        const pill = section.querySelector(`#pill-${feat.id}`);
+        pill.textContent = toggleInput.checked ? 'ON' : 'OFF';
+        pill.className   = `status-pill ${toggleInput.checked ? 'on' : 'off'}`;
+      });
+
+      // Build channel tag input if applicable
+      let channelTagInput = null;
+      if (feat.hasChannels) {
+        channelTagInput = createChannelTagInput(`ch-input-${feat.id}`, current.channelIds);
+
+        // Update summary on change
+        document.getElementById(`ch-input-${feat.id}`).addEventListener('change', () => {
+          const ids = channelTagInput.getIds();
+          const summary = document.getElementById(`ch-summary-${feat.id}`);
+          summary.textContent = ids.length
+            ? `${ids.length} channel${ids.length !== 1 ? 's' : ''} restricted`
+            : 'All channels';
+        });
+      }
+
+      // Save button
+      section.querySelector(`#save-${feat.id}`).addEventListener('click', async () => {
+        const btn      = section.querySelector(`#save-${feat.id}`);
+        const feedback = section.querySelector(`#feedback-${feat.id}`);
+        btn.disabled   = true;
+        feedback.style.display = 'none';
+
+        const payload = {
+          feature:    feat.id,
+          enabled:    section.querySelector(`#toggle-${feat.id}`).checked,
+          channelIds: channelTagInput ? channelTagInput.getIds() : null,
+        };
+
+        try {
+          const r = await fetch(`/dashboard/api/guilds/${guildId}/features`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify(payload),
+          });
+
+          if (r.ok) {
+            feedback.textContent    = '✓ Saved';
+            feedback.className      = 'save-feedback ok';
+            feedback.style.display  = 'inline';
+            setTimeout(() => { feedback.style.display = 'none'; }, 2500);
+          } else {
+            throw new Error(`HTTP ${r.status}`);
+          }
+        } catch (err) {
+          feedback.textContent   = `✗ Save failed: ${err.message}`;
+          feedback.className     = 'save-feedback err';
+          feedback.style.display = 'inline';
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      return section;
+    }
+
+    // ── Init ─────────────────────────────────────────────────────────────────
+    async function init() {
+      // Load current user info
+      try {
+        const me = await fetch('/dashboard/api/me').then(r => r.json());
+        document.getElementById('nav-username').textContent = me.username;
+      } catch { /* ignore */ }
+
+      const container = document.getElementById('features-container');
+
+      try {
+        const [guildData, features, guilds] = await Promise.all([
+          fetch(`/dashboard/api/guilds/${guildId}`).then(r => {
+            if (r.status === 401) { location.href = '/dashboard/login'; throw new Error('unauth'); }
+            if (r.status === 403) { location.href = '/dashboard'; throw new Error('forbidden'); }
+            return r.json();
+          }),
+          fetch('/dashboard/api/features').then(r => r.json()),
+          fetch('/dashboard/api/guilds').then(r => r.json()),
+        ]);
+
+        // Populate guild header
+        const guild = guilds.find(g => g.id === guildId);
+        if (guild) {
+          document.getElementById('guild-name').textContent = guild.name;
+          document.getElementById('guild-id-display').textContent = `ID: ${guild.id}`;
+          const iconEl = document.getElementById('guild-icon');
+          if (guild.icon) {
+            iconEl.innerHTML = `<img src="https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=64" alt="" />`;
+          } else {
+            iconEl.textContent = guild.name.charAt(0).toUpperCase();
+          }
+          document.title = `${guild.name} — Potato Game Bot`;
+        }
+
+        container.innerHTML = '';
+
+        for (const feat of features) {
+          const section = buildFeatureSection(feat, guildData.features);
+          container.appendChild(section);
+        }
+      } catch (err) {
+        if (err.message !== 'unauth' && err.message !== 'forbidden') {
+          container.innerHTML = '<p class="state-msg">Failed to load settings. Please try refreshing.</p>';
+        }
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Potato Game Bot — Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #1e1f22;
+      --surface:   #2b2d31;
+      --surface2:  #313338;
+      --border:    #3f4147;
+      --text:      #dbdee1;
+      --muted:     #949ba4;
+      --accent:    #5865f2;
+      --accent-hv: #4752c4;
+      --danger:    #ed4245;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+    }
+
+    /* ── Nav ──────────────────────────────────────────────────────────────── */
+    nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 16px;
+      text-decoration: none;
+      color: var(--text);
+    }
+
+    .nav-actions { display: flex; align-items: center; gap: 12px; }
+
+    #username { font-size: 14px; color: var(--muted); }
+
+    .btn-logout {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
+
+    /* ── Main ─────────────────────────────────────────────────────────────── */
+    main { max-width: 960px; margin: 0 auto; padding: 32px 24px; }
+
+    h1 { font-size: 22px; margin-bottom: 8px; }
+    .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+
+    /* ── Guild grid ───────────────────────────────────────────────────────── */
+    .guild-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+    }
+
+    .guild-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: border-color 0.15s;
+    }
+    .guild-card:hover { border-color: var(--accent); }
+
+    .guild-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: var(--surface2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .guild-icon img { width: 100%; height: 100%; object-fit: cover; }
+
+    .guild-name {
+      font-weight: 600;
+      font-size: 15px;
+      word-break: break-word;
+    }
+
+    .guild-meta { font-size: 12px; color: var(--muted); }
+
+    .btn-configure {
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      text-decoration: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      transition: background 0.15s;
+      margin-top: auto;
+    }
+    .btn-configure:hover { background: var(--accent-hv); }
+
+    /* ── Empty / loading states ───────────────────────────────────────────── */
+    .state-msg {
+      color: var(--muted);
+      font-size: 14px;
+      padding: 40px 0;
+      text-align: center;
+    }
+
+    /* ── Super-admin badge ────────────────────────────────────────────────── */
+    .badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 100px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/dashboard" class="nav-brand">🥔 Potato Game Bot</a>
+    <div class="nav-actions">
+      <span id="username"></span>
+      <span id="super-badge" class="badge" style="display:none">Super Admin</span>
+      <form method="POST" action="/dashboard/logout">
+        <button type="submit" class="btn-logout">Sign out</button>
+      </form>
+    </div>
+  </nav>
+
+  <main>
+    <h1>Your Servers</h1>
+    <p class="subtitle">Select a server to view and configure its bot settings.</p>
+    <div id="guild-grid" class="guild-grid">
+      <p class="state-msg">Loading servers…</p>
+    </div>
+  </main>
+
+  <script>
+    async function init() {
+      // Load current user info
+      try {
+        const me = await fetch('/dashboard/api/me').then(r => r.json());
+        document.getElementById('username').textContent = me.username;
+        if (me.isSuperAdmin) {
+          document.getElementById('super-badge').style.display = '';
+        }
+      } catch { /* ignore */ }
+
+      // Load guilds
+      const grid = document.getElementById('guild-grid');
+      try {
+        const [guilds, features] = await Promise.all([
+          fetch('/dashboard/api/guilds').then(r => {
+            if (r.status === 401) { location.href = '/dashboard/login'; throw new Error('unauth'); }
+            return r.json();
+          }),
+          fetch('/dashboard/api/features').then(r => r.json()),
+        ]);
+
+        if (!guilds.length) {
+          grid.innerHTML = '<p class="state-msg">No servers found where you have Manage Server permission.</p>';
+          return;
+        }
+
+        grid.innerHTML = '';
+        for (const guild of guilds) {
+          const settings = await fetch(`/dashboard/api/guilds/${guild.id}`).then(r => r.json()).catch(() => null);
+          const enabledCount = settings
+            ? Object.values(settings.features).filter(f => f.enabled).length
+            : '?';
+          const totalFeatures = features.length;
+
+          const card = document.createElement('div');
+          card.className = 'guild-card';
+
+          const iconHtml = guild.icon
+            ? `<img src="https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=64" alt="" />`
+            : guild.name.charAt(0).toUpperCase();
+
+          card.innerHTML = `
+            <div class="guild-icon">${iconHtml}</div>
+            <div class="guild-name">${escHtml(guild.name)}</div>
+            <div class="guild-meta">${enabledCount} / ${totalFeatures} features enabled</div>
+            <a href="/dashboard/guild/${guild.id}" class="btn-configure">Configure</a>
+          `;
+          grid.appendChild(card);
+        }
+      } catch (err) {
+        if (err.message !== 'unauth') {
+          grid.innerHTML = '<p class="state-msg">Failed to load servers. Please try refreshing.</p>';
+        }
+      }
+    }
+
+    function escHtml(str) {
+      return str.replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    init();
+  </script>
+</body>
+</html>

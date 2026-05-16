@@ -74,6 +74,20 @@ if (mcpEnabled) {
   }
 }
 
+// Conditionally start the admin dashboard server.
+// Set DASHBOARD_ENABLED=true and provide DISCORD_CLIENT_SECRET to activate.
+if (process.env.DASHBOARD_ENABLED === 'true') {
+  try {
+    const DashboardServer = require('./dashboard/DashboardServer');
+    const db = require('./db/database');
+    const dashPort = parseInt(process.env.DASHBOARD_PORT || '3200', 10);
+    const dashServer = new DashboardServer({ db, client, port: dashPort });
+    dashServer.start();
+  } catch (err) {
+    console.error('[Dashboard] Failed to start:', err);
+  }
+}
+
 // ── Load commands ──────────────────────────────────────────────────────────────
 const commandsPath = path.join(__dirname, 'commands');
 for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {

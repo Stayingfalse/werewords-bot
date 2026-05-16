@@ -192,6 +192,21 @@ db.exec(`
     topic_notes  TEXT,
     updated_at   INTEGER NOT NULL DEFAULT 0
   );
+
+  -- ── Admin dashboard: per-guild feature settings ──────────────────────────────
+
+  -- One row per guild+feature combination.  channel_ids is a JSON array of
+  -- allowed Discord channel IDs (NULL means "all channels").  extra is a JSON
+  -- blob for any feature-specific configuration.
+  CREATE TABLE IF NOT EXISTS guild_settings (
+    guild_id     TEXT NOT NULL,
+    feature      TEXT NOT NULL,
+    enabled      INTEGER NOT NULL DEFAULT 1,
+    channel_ids  TEXT,
+    extra        TEXT,
+    updated_at   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (guild_id, feature)
+  );
 `);
 
 // ── Lightweight column migrations for existing installs ───────────────────────
