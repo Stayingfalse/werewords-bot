@@ -273,6 +273,54 @@
 
     /* ── Loading / error states ───────────────────────────────────────────── */
     .state-msg { color: var(--muted); font-size: 14px; padding: 40px 0; text-align: center; }
+
+    /* ── Super-admin debug panel ──────────────────────────────────────────── */
+    #debug-panel {
+      margin-top: 32px;
+      background: #0d0e10;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    #debug-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: #161719;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+    }
+    #debug-panel-header:hover { background: #1a1c1f; }
+    #debug-panel-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #f0c040;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+    #debug-panel-chevron { color: var(--muted); font-size: 11px; transition: transform 0.2s; }
+    #debug-panel.open #debug-panel-chevron { transform: rotate(180deg); }
+    #debug-log {
+      display: none;
+      font-family: 'Consolas', 'Menlo', monospace;
+      font-size: 11.5px;
+      line-height: 1.6;
+      padding: 12px 16px;
+      max-height: 480px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #c9d1d9;
+    }
+    #debug-panel.open #debug-log { display: block; }
+    .dbg-time  { color: #6a737d; }
+    .dbg-info  { color: #58a6ff; }
+    .dbg-ok    { color: #3fb950; }
+    .dbg-warn  { color: #d29922; }
+    .dbg-error { color: #f85149; }
+    .dbg-sep   { color: #30363d; }
   </style>
 </head>
 <body>
@@ -301,6 +349,15 @@
     <div id="features-container">
       <p class="state-msg">Loading settings…</p>
     </div>
+
+    <!-- Super-admin debug panel (hidden until isSuperAdmin confirmed) -->
+    <div id="debug-panel" style="display:none;">
+      <div id="debug-panel-header">
+        <span id="debug-panel-title">🛠 Super-Admin Debug Log</span>
+        <span id="debug-panel-chevron">▼</span>
+      </div>
+      <pre id="debug-log"></pre>
+    </div>
   </main>
 
   <script>
@@ -310,6 +367,68 @@
     function escHtml(str) {
       return String(str).replace(/[&<>"']/g, c =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // ── Super-admin debug logger ─────────────────────────────────────────────
+    const debugPanel = document.getElementById('debug-panel');
+    const debugLog   = document.getElementById('debug-log');
+
+    document.getElementById('debug-panel-header').addEventListener('click', () => {
+      debugPanel.classList.toggle('open');
+    });
+
+    function dbgNow() {
+      return new Date().toISOString().replace('T', ' ').replace('Z', '');
+    }
+
+    function dbgAppend(cls, text) {
+      const line = document.createElement('span');
+      line.className = cls;
+      line.textContent = text;
+      debugLog.appendChild(line);
+      debugLog.appendChild(document.createTextNode('\n'));
+      debugLog.scrollTop = debugLog.scrollHeight;
+    }
+
+    const dbg = {
+      info:  (msg) => dbgAppend('dbg-info',  `[${dbgNow()}] ℹ  ${msg}`),
+      ok:    (msg) => dbgAppend('dbg-ok',    `[${dbgNow()}] ✓  ${msg}`),
+      warn:  (msg) => dbgAppend('dbg-warn',  `[${dbgNow()}] ⚠  ${msg}`),
+      error: (msg) => dbgAppend('dbg-error', `[${dbgNow()}] ✗  ${msg}`),
+      sep:   ()    => dbgAppend('dbg-sep',   '─'.repeat(60)),
+      raw:   (msg) => dbgAppend('dbg-time',  msg),
+    };
+
+    /** Wraps fetch() and logs request/response details to the debug panel. */
+    async function dbgFetch(url, opts) {
+      dbg.info(`${(opts && opts.method) || 'GET'} ${url}`);
+      if (opts && opts.body) dbg.raw(`    body: ${opts.body}`);
+      try {
+        const r = await fetch(url, opts);
+        const clone = r.clone();
+        let body = '';
+        try { body = await clone.text(); } catch { body = '<unreadable>'; }
+        if (r.ok) {
+          dbg.ok(`  → ${r.status} OK`);
+        } else {
+          dbg.error(`  → ${r.status} ${r.statusText}`);
+          dbg.raw(`    response: ${body.slice(0, 500)}`);
+        }
+        // Return a new Response-like object with the already-read body
+        return new Response(body, { status: r.status, statusText: r.statusText, headers: r.headers });
+      } catch (err) {
+        dbg.error(`  → Network error: ${err.message}`);
+        throw err;
+      }
+    }
+
+    function enableDebugPanel() {
+      debugPanel.style.display = 'block';
+      debugPanel.classList.add('open');
+      dbg.sep();
+      dbg.warn('Settings page debug mode — super-admin view');
+      dbg.info(`Page loaded: ${location.href}`);
+      dbg.sep();
     }
 
     // ── Channel tag input component ──────────────────────────────────────────
@@ -356,7 +475,7 @@
     }
 
     // ── Build feature section ────────────────────────────────────────────────
-    function buildFeatureSection(feat, settings) {
+    function buildFeatureSection(feat, settings, isSuperAdmin, apiFetch) {
       const safeSettings = settings && typeof settings === 'object' ? settings : {};
       const rawCurrent = safeSettings[feat.id];
       const current = rawCurrent && typeof rawCurrent === 'object'
@@ -446,8 +565,13 @@
           channelIds: channelTagInput ? channelTagInput.getIds() : null,
         };
 
+        if (isSuperAdmin) {
+          dbg.sep();
+          dbg.info(`Saving feature "${feat.id}"…`);
+        }
+
         try {
-          const r = await fetch(`/dashboard/api/guilds/${guildId}/features`, {
+          const r = await (apiFetch || fetch)(`/dashboard/api/guilds/${guildId}/features`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify(payload),
@@ -458,6 +582,7 @@
             feedback.className      = 'save-feedback ok';
             feedback.style.display  = 'inline';
             setTimeout(() => { feedback.style.display = 'none'; }, 2500);
+            if (isSuperAdmin) dbg.ok(`Feature "${feat.id}" saved successfully`);
           } else {
             throw new Error(`HTTP ${r.status}`);
           }
@@ -465,6 +590,7 @@
           feedback.textContent   = `✗ Save failed: ${err.message}`;
           feedback.className     = 'save-feedback err';
           feedback.style.display = 'inline';
+          if (isSuperAdmin) dbg.error(`Save failed for "${feat.id}": ${err.message}`);
         } finally {
           btn.disabled = false;
         }
@@ -475,27 +601,50 @@
 
     // ── Init ─────────────────────────────────────────────────────────────────
     async function init() {
-      // Load current user info
+      // Load current user info and check super-admin status
+      let isSuperAdmin = false;
       try {
         const me = await fetch('/dashboard/api/me').then(r => r.json());
         document.getElementById('nav-username').textContent = me.username;
-      } catch { /* ignore */ }
+        isSuperAdmin = !!me.isSuperAdmin;
+        if (isSuperAdmin) {
+          enableDebugPanel();
+          dbg.info(`Logged in as: ${me.username} (${me.userId}) — super-admin: true`);
+          dbg.sep();
+        }
+      } catch (err) {
+        if (isSuperAdmin) dbg.error(`/api/me failed: ${err.message}`);
+      }
+
+      // Use debug-aware fetch for super-admins, plain fetch otherwise
+      const apiFetch = isSuperAdmin ? dbgFetch : fetch;
 
       const container = document.getElementById('features-container');
 
       try {
+        if (isSuperAdmin) dbg.info('Fetching guild data, features list, and guilds list…');
+
         const [guildData, features, guilds] = await Promise.all([
-          fetch(`/dashboard/api/guilds/${guildId}`).then(r => {
+          apiFetch(`/dashboard/api/guilds/${guildId}`).then(r => {
             if (r.status === 401) { location.href = '/dashboard/login'; throw new Error('unauth'); }
             if (r.status === 403) { location.href = '/dashboard'; throw new Error('forbidden'); }
             return r.json();
           }),
-          fetch('/dashboard/api/features').then(r => r.json()),
-          fetch('/dashboard/api/guilds').then(r => {
+          apiFetch('/dashboard/api/features').then(r => r.json()),
+          apiFetch('/dashboard/api/guilds').then(r => {
             if (r.status === 401) { location.href = '/dashboard/login'; throw new Error('Unauthorized: redirecting to login'); }
             return r.json();
           }),
         ]);
+
+        if (isSuperAdmin) {
+          dbg.sep();
+          dbg.ok('All API calls completed successfully');
+          dbg.raw(`  guildData: ${JSON.stringify(guildData).slice(0, 400)}`);
+          dbg.raw(`  features:  ${JSON.stringify(features).slice(0, 200)}`);
+          dbg.raw(`  guilds:    ${JSON.stringify(guilds).slice(0, 200)}`);
+          dbg.sep();
+        }
 
         // Populate guild header
         const guild = guilds.find(g => g.id === guildId);
@@ -509,15 +658,28 @@
             iconEl.textContent = guild.name.charAt(0).toUpperCase();
           }
           document.title = `${guild.name} — Potato Game Bot`;
+          if (isSuperAdmin) dbg.ok(`Guild resolved: "${guild.name}" (${guild.id})`);
+        } else {
+          if (isSuperAdmin) dbg.warn(`Guild ID "${guildId}" not found in guilds list — guildData.features will still be used`);
         }
 
         container.innerHTML = '';
 
         for (const feat of features) {
-          const section = buildFeatureSection(feat, guildData.features);
+          const section = buildFeatureSection(feat, guildData.features, isSuperAdmin, apiFetch);
           container.appendChild(section);
         }
+
+        if (isSuperAdmin) {
+          dbg.sep();
+          dbg.ok(`Rendered ${features.length} feature section(s)`);
+        }
       } catch (err) {
+        if (isSuperAdmin) {
+          dbg.sep();
+          dbg.error(`Init error: ${err.message}`);
+          if (err.stack) dbg.raw(err.stack);
+        }
         if (err.message !== 'unauth' && err.message !== 'forbidden') {
           container.innerHTML = '<p class="state-msg">Failed to load settings. Please try refreshing.</p>';
         }
