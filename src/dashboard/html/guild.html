@@ -357,7 +357,12 @@
 
     // ── Build feature section ────────────────────────────────────────────────
     function buildFeatureSection(feat, settings) {
-      const current = settings[feat.id] || { enabled: true, channelIds: null };
+      const safeSettings = settings && typeof settings === 'object' ? settings : {};
+      const rawCurrent = safeSettings[feat.id];
+      const current = rawCurrent && typeof rawCurrent === 'object'
+        ? rawCurrent
+        : { enabled: true, channelIds: null };
+      const safeChannelIds = Array.isArray(current.channelIds) ? current.channelIds : null;
 
       const section = document.createElement('div');
       section.className = 'feature-section';
@@ -365,7 +370,7 @@
 
       const statusClass = current.enabled ? 'on'  : 'off';
       const statusText  = current.enabled ? 'ON'  : 'OFF';
-      const channelCount = current.channelIds?.length;
+      const channelCount = safeChannelIds?.length;
       const channelSub = channelCount
         ? `${channelCount} channel${channelCount !== 1 ? 's' : ''} restricted`
         : 'All channels';
@@ -416,7 +421,7 @@
       // Build channel tag input if applicable
       let channelTagInput = null;
       if (feat.hasChannels) {
-        channelTagInput = createChannelTagInput(`ch-input-${feat.id}`, current.channelIds);
+        channelTagInput = createChannelTagInput(`ch-input-${feat.id}`, safeChannelIds);
 
         // Update summary on change
         document.getElementById(`ch-input-${feat.id}`).addEventListener('change', () => {
