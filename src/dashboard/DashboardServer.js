@@ -49,6 +49,16 @@ const FEATURES = [
   { id: 'sassy',        label: 'SassyBot',     hasChannels: true  },
 ];
 
+function firstNonEmptyEnv(...names) {
+  for (const name of names) {
+    const raw = process.env[name];
+    if (typeof raw !== 'string') continue;
+    const value = raw.trim();
+    if (value) return value;
+  }
+  return '';
+}
+
 class DashboardServer {
   /**
    * @param {object} opts
@@ -65,11 +75,19 @@ class DashboardServer {
     this._sessions = new Map();
 
     // Resolve config from env
-    this._clientId     = process.env.CLIENT_ID     || '';
-    // Backward-compat: allow CLIENT_SECRET if DISCORD_CLIENT_SECRET is not set.
-    this._clientSecret = process.env.DISCORD_CLIENT_SECRET || process.env.CLIENT_SECRET || '';
+    this._clientId     = firstNonEmptyEnv('DISCORD_CLIENT_ID', 'CLIENT_ID', 'DISCORD_OAUTH_CLIENT_ID');
+    // Backward-compat aliases are accepted for existing deployments.
+    this._clientSecret = firstNonEmptyEnv(
+      'DISCORD_CLIENT_SECRET',
+      'CLIENT_SECRET',
+      'DISCORD_OAUTH_CLIENT_SECRET',
+      'OAUTH_CLIENT_SECRET',
+    );
     this._baseUrl      = (process.env.DASHBOARD_URL || `http://localhost:${this._port}`).replace(/\/$/, '');
     this._redirectUri  = `${this._baseUrl}/dashboard/callback`;
+    if (!this._clientId || !this._clientSecret) {
+      console.warn('[Dashboard] CLIENT_ID / client secret env vars are incomplete. OAuth callback will fail until both are set.');
+    }
 
     const superAdminRaw = process.env.SUPER_ADMIN_IDS || '';
     this._superAdminIds = new Set(superAdminRaw.split(',').map(s => s.trim()).filter(Boolean));
@@ -288,8 +306,8 @@ class DashboardServer {
     // Exchange code for access token
     const tokenData = await this._discordTokenExchange(code);
     if (!tokenData.access_token) {
-      res.writeHead(502, { 'Content-Type': 'text/plain' });
-      res.end('Failed to exchange OAuth code');
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('OAuth token exchange failed. Check dashboard CLIENT_ID and client secret environment variables.');
       return;
     }
 
@@ -300,8 +318,8 @@ class DashboardServer {
     ]);
 
     if (!user.id) {
-      res.writeHead(502, { 'Content-Type': 'text/plain' });
-      res.end('Failed to fetch Discord user');
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('OAuth user lookup failed. Please retry login.');
       return;
     }
 
@@ -436,11 +454,23 @@ class DashboardServer {
         let data = '';
         r.on('data', c => { data += c; });
         r.on('end',  () => {
-          try { resolve(JSON.parse(data)); }
+          const status = Number(r.statusCode || 0);
+          let parsed;
+          try { parsed = JSON.parse(data); }
           catch (err) {
             console.error('[Dashboard] Failed to parse Discord token response:', err.message);
             resolve({});
+            return;
           }
+
+          if (status >= 400) {
+            console.error('[Dashboard] Discord token exchange failed:', {
+              status,
+              error: parsed.error,
+              error_description: parsed.error_description,
+            });
+          }
+          resolve(parsed);
         });
       });
       req.on('error', reject);
