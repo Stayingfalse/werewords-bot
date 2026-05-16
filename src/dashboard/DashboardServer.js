@@ -454,7 +454,7 @@ class DashboardServer {
         let data = '';
         r.on('data', c => { data += c; });
         r.on('end',  () => {
-          const status = Number(r.statusCode || 0);
+          const httpStatus = Number(r.statusCode || 0);
           let parsed;
           try { parsed = JSON.parse(data); }
           catch (err) {
@@ -463,9 +463,9 @@ class DashboardServer {
             return;
           }
 
-          if (status >= 400) {
+          if (httpStatus >= 400) {
             console.error('[Dashboard] Discord token exchange failed:', {
-              status,
+              status: httpStatus,
               error: parsed.error,
               error_description: parsed.error_description,
             });
