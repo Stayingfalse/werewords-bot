@@ -665,12 +665,20 @@
       const channels = Array.isArray(guildMeta?.channels) ? guildMeta.channels : [];
       const roles = Array.isArray(guildMeta?.roles) ? guildMeta.roles : [];
       const roleNameById = new Map(roles.map((r) => [String(r.id), r.name]));
+      let publishedMenus = Array.isArray(currentExtra.roleMenus)
+        ? currentExtra.roleMenus.map((menu) => ({ ...menu }))
+        : [];
 
       const safeRoleOptions = Array.isArray(currentExtra.roleOptions) && currentExtra.roleOptions.length
         ? currentExtra.roleOptions.slice(0, ROLE_MENU_MAX_OPTIONS)
         : [];
 
       root.innerHTML = `
+        <div class="wizard-field">
+          <label for="wizard-${feat.id}-existing-menu">Published menus</label>
+          <select id="wizard-${feat.id}-existing-menu"></select>
+          <div class="wizard-hint">Select an existing published menu to view/edit it, or keep “Create new menu”.</div>
+        </div>
         <div class="wizard-settings-title">Setup wizard</div>
         <div class="wizard-field">
           <label for="wizard-${feat.id}-menu-channel">Role menu channel</label>
@@ -688,6 +696,13 @@
           <input id="wizard-${feat.id}-desc" type="text" value="${escHtml(currentExtra.description || 'Use the buttons below to toggle your roles.')}" />
         </div>
         <div class="wizard-field">
+          <label class="toggle-label">
+            <input id="wizard-${feat.id}-single-select" type="checkbox" ${currentExtra.singleSelect ? 'checked' : ''} />
+            Allow only one role from this menu at a time
+          </label>
+          <div class="wizard-hint">When enabled, selecting a role from this menu removes the member’s other roles from this same menu.</div>
+        </div>
+        <div class="wizard-field">
           <label>Role options</label>
           <div class="role-option-list" id="wizard-${feat.id}-role-options"></div>
           <button type="button" class="btn-add" id="wizard-${feat.id}-add-role">+ Add role option</button>
@@ -701,6 +716,11 @@
       const addRoleBtn = root.querySelector(`#wizard-${feat.id}-add-role`);
       const publishBtn = root.querySelector(`#wizard-${feat.id}-publish`);
       const publishFeedback = root.querySelector(`#wizard-${feat.id}-publish-feedback`);
+      const existingMenuSelect = root.querySelector(`#wizard-${feat.id}-existing-menu`);
+      const menuChannelSelect = root.querySelector(`#wizard-${feat.id}-menu-channel`);
+      const titleInput = root.querySelector(`#wizard-${feat.id}-title`);
+      const descInput = root.querySelector(`#wizard-${feat.id}-desc`);
+      const singleSelectInput = root.querySelector(`#wizard-${feat.id}-single-select`);
 
       function makeRoleRow(option = {}) {
         const roleId = String(option.roleId || '');
@@ -731,11 +751,69 @@
         optionsContainer.appendChild(row);
       }
 
-      if (safeRoleOptions.length) {
-        safeRoleOptions.forEach((option) => makeRoleRow(option));
-      } else {
-        makeRoleRow();
+      function setRoleRows(roleOptions) {
+        optionsContainer.innerHTML = '';
+        if (Array.isArray(roleOptions) && roleOptions.length) {
+          roleOptions.slice(0, ROLE_MENU_MAX_OPTIONS).forEach((option) => makeRoleRow(option));
+        } else {
+          makeRoleRow();
+        }
       }
+
+      function getRoleOptionsFromEditor() {
+        const roleOptions = [];
+        root.querySelectorAll('.role-option-row').forEach((row) => {
+          const roleId = row.querySelector('.wizard-role-id')?.value?.trim() || '';
+          const roleLabel = row.querySelector('.wizard-role-label')?.value?.trim() || '';
+          const roleEmoji = row.querySelector('.wizard-role-emoji')?.value?.trim() || '';
+          if (!roleId) return;
+          roleOptions.push({
+            roleId,
+            label: roleLabel || roleNameById.get(roleId) || 'Role',
+            emoji: roleEmoji || null,
+            style: 'secondary',
+          });
+        });
+        return roleOptions;
+      }
+
+      function renderPublishedMenuOptions(selectedMenuId = '') {
+        const opts = ['<option value="">Create new menu</option>']
+          .concat(publishedMenus.map((menu) => {
+            const channelName = channels.find((c) => String(c.id) === String(menu.menuChannelId))?.name || menu.menuChannelId || 'unknown channel';
+            const label = `${menu.title || 'Role Menu'} • #${channelName} • ${menu.messageId || 'draft'}`;
+            const selected = String(menu.menuId || '') === String(selectedMenuId || '') ? 'selected' : '';
+            return `<option value="${escHtml(menu.menuId || '')}" ${selected}>${escHtml(label)}</option>`;
+          }));
+        existingMenuSelect.innerHTML = opts.join('');
+      }
+
+      function loadMenuIntoEditor(menu) {
+        menuChannelSelect.value = String(menu?.menuChannelId || '');
+        titleInput.value = String(menu?.title || 'Role Menu: Roles');
+        descInput.value = String(menu?.description || 'Use the buttons below to toggle your roles.');
+        singleSelectInput.checked = !!menu?.singleSelect;
+        setRoleRows(Array.isArray(menu?.roleOptions) ? menu.roleOptions : []);
+      }
+
+      setRoleRows(safeRoleOptions);
+      renderPublishedMenuOptions();
+
+      existingMenuSelect.addEventListener('change', () => {
+        const selectedId = existingMenuSelect.value;
+        const selectedMenu = publishedMenus.find((menu) => String(menu.menuId) === String(selectedId)) || null;
+        if (selectedMenu) {
+          loadMenuIntoEditor(selectedMenu);
+        } else {
+          loadMenuIntoEditor({
+            menuChannelId: currentExtra.menuChannelId || '',
+            title: currentExtra.title || 'Role Menu: Roles',
+            description: currentExtra.description || 'Use the buttons below to toggle your roles.',
+            singleSelect: !!currentExtra.singleSelect,
+            roleOptions: safeRoleOptions,
+          });
+        }
+      });
 
       addRoleBtn.addEventListener('click', () => {
         if (optionsContainer.querySelectorAll('.role-option-row').length >= ROLE_MENU_MAX_OPTIONS) return;
@@ -746,15 +824,31 @@
         publishBtn.disabled = true;
         publishFeedback.style.display = 'none';
         try {
+          const roleOptions = getRoleOptionsFromEditor();
+          const selectedMenuId = existingMenuSelect.value || null;
+          const requestPayload = {
+            menuId: selectedMenuId,
+            menuChannelId: menuChannelSelect.value?.trim() || null,
+            title: titleInput.value?.trim() || 'Role Menu: Roles',
+            description: descInput.value?.trim() || 'Use the buttons below to toggle your roles.',
+            singleSelect: !!singleSelectInput.checked,
+            roleOptions,
+          };
           const response = await (apiFetch || fetch)(`/dashboard/api/guilds/${guildId}/role-menu/publish`, {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestPayload),
           });
           if (!response.ok) {
             const payload = await response.json().catch(() => ({}));
             throw new Error(payload.error || `HTTP ${response.status}`);
           }
-          const payload = await response.json().catch(() => ({}));
-          publishFeedback.textContent = `✓ Published (channel ID: ${payload.channelId})`;
+          const responsePayload = await response.json().catch(() => ({}));
+          if (Array.isArray(responsePayload.roleMenus)) {
+            publishedMenus = responsePayload.roleMenus;
+            renderPublishedMenuOptions(responsePayload.menuId || selectedMenuId || '');
+          }
+          publishFeedback.textContent = `✓ Published (channel ID: ${responsePayload.channelId})`;
           publishFeedback.className = 'save-feedback ok';
           publishFeedback.style.display = 'inline';
         } catch (err) {
@@ -768,23 +862,11 @@
 
       return {
         getExtra(isEnabled) {
-          const menuChannelId = root.querySelector(`#wizard-${feat.id}-menu-channel`)?.value?.trim() || null;
-          const title = root.querySelector(`#wizard-${feat.id}-title`)?.value?.trim() || 'Role Menu: Roles';
-          const description = root.querySelector(`#wizard-${feat.id}-desc`)?.value?.trim() || 'Use the buttons below to toggle your roles.';
-          const roleOptions = [];
-
-          root.querySelectorAll('.role-option-row').forEach((row) => {
-            const roleId = row.querySelector('.wizard-role-id')?.value?.trim() || '';
-            const roleLabel = row.querySelector('.wizard-role-label')?.value?.trim() || '';
-            const roleEmoji = row.querySelector('.wizard-role-emoji')?.value?.trim() || '';
-            if (!roleId) return;
-            roleOptions.push({
-              roleId,
-              label: roleLabel || roleNameById.get(roleId) || 'Role',
-              emoji: roleEmoji || null,
-              style: 'secondary',
-            });
-          });
+          const menuChannelId = menuChannelSelect?.value?.trim() || null;
+          const title = titleInput?.value?.trim() || 'Role Menu: Roles';
+          const description = descInput?.value?.trim() || 'Use the buttons below to toggle your roles.';
+          const singleSelect = !!singleSelectInput?.checked;
+          const roleOptions = getRoleOptionsFromEditor();
 
           if (isEnabled) {
             if (!menuChannelId) return { ok: false, message: 'Role menu channel is required.' };
@@ -795,10 +877,11 @@
             menuChannelId,
             title,
             description,
+            singleSelect,
             roleOptions,
           };
-          if (Array.isArray(currentExtra.roleMenus)) {
-            extra.roleMenus = currentExtra.roleMenus;
+          if (Array.isArray(publishedMenus)) {
+            extra.roleMenus = publishedMenus;
           }
           if (currentExtra.roleMenuMessageId) {
             extra.roleMenuMessageId = currentExtra.roleMenuMessageId;

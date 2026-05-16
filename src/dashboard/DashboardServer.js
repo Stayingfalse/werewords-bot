@@ -354,7 +354,15 @@ class DashboardServer {
       const session = this._requireSession(req);
       const guildId = publishRoleMenuMatch[1];
       await this._assertGuildAccess(session, guildId);
-      const result = await publishRoleMenuMessage(this._client, guildId);
+      const rawBody = await this._readBody(req);
+      let payload = null;
+      if (rawBody) {
+        payload = JSON.parse(rawBody);
+      }
+      const publishOptions = payload && typeof payload === 'object' && !Array.isArray(payload)
+        ? payload
+        : null;
+      const result = await publishRoleMenuMessage(this._client, guildId, publishOptions);
       return this._sendJson(res, 200, { ok: true, ...result });
     }
 
