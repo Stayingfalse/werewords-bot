@@ -24,6 +24,21 @@ const stmtAllGuilds = db.prepare(`
   SELECT DISTINCT guild_id FROM guild_settings
 `);
 
+function safeJsonParse(value, fallback = null) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeChannelIds(value) {
+  if (!Array.isArray(value)) return null;
+  return value
+    .map((id) => String(id).trim())
+    .filter(Boolean);
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 /**
@@ -37,10 +52,12 @@ function getGuildSettings(guildId) {
   const rows = stmtGetGuild.all(guildId);
   const result = {};
   for (const row of rows) {
+    const parsedChannelIds = row.channel_ids ? safeJsonParse(row.channel_ids, null) : null;
+    const parsedExtra = row.extra ? safeJsonParse(row.extra, null) : null;
     result[row.feature] = {
       enabled:    row.enabled === 1,
-      channelIds: row.channel_ids ? JSON.parse(row.channel_ids) : null,
-      extra:      row.extra       ? JSON.parse(row.extra)       : null,
+      channelIds: normalizeChannelIds(parsedChannelIds),
+      extra:      parsedExtra && typeof parsedExtra === 'object' ? parsedExtra : null,
     };
   }
   return result;
