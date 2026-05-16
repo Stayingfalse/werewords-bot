@@ -66,7 +66,8 @@ class DashboardServer {
 
     // Resolve config from env
     this._clientId     = process.env.CLIENT_ID     || '';
-    this._clientSecret = process.env.DISCORD_CLIENT_SECRET || '';
+    // Backward-compat: allow CLIENT_SECRET if DISCORD_CLIENT_SECRET is not set.
+    this._clientSecret = process.env.DISCORD_CLIENT_SECRET || process.env.CLIENT_SECRET || '';
     this._baseUrl      = (process.env.DASHBOARD_URL || `http://localhost:${this._port}`).replace(/\/$/, '');
     this._redirectUri  = `${this._baseUrl}/dashboard/callback`;
 

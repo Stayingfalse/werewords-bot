@@ -75,7 +75,7 @@ if (mcpEnabled) {
 }
 
 // Conditionally start the admin dashboard server.
-// Set DASHBOARD_ENABLED=true and provide DISCORD_CLIENT_SECRET to activate.
+// Set DASHBOARD_ENABLED=true and provide DISCORD_CLIENT_SECRET (or legacy CLIENT_SECRET) to activate.
 if (process.env.DASHBOARD_ENABLED === 'true') {
   try {
     const DashboardServer = require('./dashboard/DashboardServer');
