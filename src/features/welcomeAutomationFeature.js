@@ -118,6 +118,7 @@ function ensureJoinWelcomeRequirements(text, userMention, introduceChannelId) {
   if (!next.includes(userMention)) {
     next = `${userMention} ${next}`;
   }
+  next = next.replace(/<@&\d+>/g, ROLE_MENTION_REPLACEMENT);
   if (introduceChannelId && !next.includes(`<#${introduceChannelId}>`)) {
     next = `${next} Please introduce yourself in <#${introduceChannelId}>.`;
   }
